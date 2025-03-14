@@ -1,0 +1,4 @@
+[submodule "src/yolo/ultralytics"]
+	path = src/yolo/ultralytics
+	url = https://github.com/ultralytics/ultralytics.git
+
