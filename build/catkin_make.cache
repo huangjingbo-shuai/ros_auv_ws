@@ -1,2 +1,0 @@
-auv_run:yolo
--DCATKIN_DEVEL_PREFIX=/home/yunxia/ros_auv_ws/devel -DCMAKE_INSTALL_PREFIX=/home/yunxia/ros_auv_ws/install -G Unix Makefiles
