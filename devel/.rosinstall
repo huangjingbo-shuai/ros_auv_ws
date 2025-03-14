@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/yunxia/ros_auv_ws/devel/setup.sh

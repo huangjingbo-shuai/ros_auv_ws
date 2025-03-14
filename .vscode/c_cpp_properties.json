@@ -1,0 +1,25 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/yunxia/ros_boat_ws/devel/include/**",
+        "/opt/ros/noetic/include/**",
+        "/home/yunxia/ros_boat_ws/src/app_interface/include/**",
+        "/home/yunxia/ros_auv_ws/src/auv_run/include/**",
+        "/opt/ros/noetic/share/julius/include/**",
+        "/home/yunxia/ros_boat_ws/src/OrbbecSDK_ROS1/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}
