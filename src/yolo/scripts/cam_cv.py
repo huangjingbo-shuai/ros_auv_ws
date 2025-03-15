@@ -20,14 +20,14 @@ class PersonAngleDetector:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         rospy.loginfo(f"使用设备: {self.device}")
 
-        # **加载 YOLO 模型**
+        # **加载 YOLO 模型**4
         rospy.loginfo("加载 YOLO 模型中...")
         # self.model = YOLO("/home/yunxia/ros_auv_ws/src/yolo/ultralytics/yolo11x.pt").to(self.device)
         # self.model = YOLO("/home/yunxia/ros_auv_ws/src/yolo/ultralytics/yolo11n.pt").to(self.device)
         self.model = YOLO("/home/yunxia/ros_auv_ws/src/yolo/ultralytics/yolov8n.pt").to(self.device)
 
 
-        rospy.loginfo("YOLO 模型加载完成！")
+        rospy.loginfo("YOLO 模型加载完成！")s
 
         # **订阅相机原始图像**
         self.image_sub = rospy.Subscriber("/camera/image_raw", Image, self.image_callback, queue_size=1, buff_size=2**24)

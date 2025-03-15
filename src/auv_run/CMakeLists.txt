@@ -11,6 +11,8 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
+  geometry_msgs
+  mavros_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -133,7 +135,11 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-# add_executable(${PROJECT_NAME}_node src/auv_run_node.cpp)
+add_executable(deepth_ctrl src/deepth_ctrl.cpp)
+add_executable(deepth_ctrl_1 src/deepth_ctrl_1.cpp)
+add_executable(auv_go src/auv_go.cpp)
+add_executable(motor src/motor.cpp)
+
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -146,10 +152,18 @@ include_directories(
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-# target_link_libraries(${PROJECT_NAME}_node
-#   ${catkin_LIBRARIES}
-# )
-
+target_link_libraries(deepth_ctrl
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(deepth_ctrl_1
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(auv_go
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(motor
+  ${catkin_LIBRARIES}
+)
 #############
 ## Install ##
 #############
