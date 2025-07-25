@@ -1,0 +1,11 @@
+auv_run
+/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/auv_go /home/yunxia/ros_auv_ws/devel/lib/auv_run/auv_go
+/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/motor /home/yunxia/ros_auv_ws/devel/lib/auv_run/motor
+/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/depth_sub /home/yunxia/ros_auv_ws/devel/lib/auv_run/depth_sub
+/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/hold /home/yunxia/ros_auv_ws/devel/lib/auv_run/hold
+/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/auv_arm /home/yunxia/ros_auv_ws/devel/lib/auv_run/auv_arm
+/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/deepth_ctrl_1 /home/yunxia/ros_auv_ws/devel/lib/auv_run/deepth_ctrl_1
+/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/deepth_ctrl /home/yunxia/ros_auv_ws/devel/lib/auv_run/deepth_ctrl
+/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/pkgconfig/auv_run.pc /home/yunxia/ros_auv_ws/devel/lib/pkgconfig/auv_run.pc
+/home/yunxia/ros_auv_ws/devel/.private/auv_run/share/auv_run/cmake/auv_runConfig-version.cmake /home/yunxia/ros_auv_ws/devel/share/auv_run/cmake/auv_runConfig-version.cmake
+/home/yunxia/ros_auv_ws/devel/.private/auv_run/share/auv_run/cmake/auv_runConfig.cmake /home/yunxia/ros_auv_ws/devel/share/auv_run/cmake/auv_runConfig.cmake

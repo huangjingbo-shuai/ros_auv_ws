@@ -1,0 +1,5 @@
+Arduino_go
+/home/yunxia/ros_auv_ws/devel/.private/Arduino_go/lib/pkgconfig/Arduino_go.pc /home/yunxia/ros_auv_ws/devel/lib/pkgconfig/Arduino_go.pc
+/home/yunxia/ros_auv_ws/devel/.private/Arduino_go/lib/Arduino_go/motor_go /home/yunxia/ros_auv_ws/devel/lib/Arduino_go/motor_go
+/home/yunxia/ros_auv_ws/devel/.private/Arduino_go/share/Arduino_go/cmake/Arduino_goConfig.cmake /home/yunxia/ros_auv_ws/devel/share/Arduino_go/cmake/Arduino_goConfig.cmake
+/home/yunxia/ros_auv_ws/devel/.private/Arduino_go/share/Arduino_go/cmake/Arduino_goConfig-version.cmake /home/yunxia/ros_auv_ws/devel/share/Arduino_go/cmake/Arduino_goConfig-version.cmake

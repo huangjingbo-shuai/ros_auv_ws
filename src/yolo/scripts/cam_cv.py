@@ -24,10 +24,10 @@ class PersonAngleDetector:
         rospy.loginfo("加载 YOLO 模型中...")
         # self.model = YOLO("/home/yunxia/ros_auv_ws/src/yolo/ultralytics/yolo11x.pt").to(self.device)
         # self.model = YOLO("/home/yunxia/ros_auv_ws/src/yolo/ultralytics/yolo11n.pt").to(self.device)
-        self.model = YOLO("/home/yunxia/ros_auv_ws/src/yolo/ultralytics/yolov8n.pt").to(self.device)
+        self.model = YOLO("/home/yunxia/ros_auv_ws/src/yolo/ultralytics/yolov11n.pt").to(self.device)
 
 
-        rospy.loginfo("YOLO 模型加载完成！")s
+        rospy.loginfo("YOLO 模型加载完成！")
 
         # **订阅相机原始图像**
         self.image_sub = rospy.Subscriber("/camera/image_raw", Image, self.image_callback, queue_size=1, buff_size=2**24)

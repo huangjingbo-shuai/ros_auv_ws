@@ -24,6 +24,8 @@ class UsbCameraPublisher:
         # 设置摄像头分辨率
         self.width = rospy.get_param('~width', 640)
         self.height = rospy.get_param('~height', 480)
+        # self.width = rospy.get_param('~width', 1280)
+        # self.height = rospy.get_param('~height', 720)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         

@@ -1,0 +1,5 @@
+stm32_servo
+/home/yunxia/ros_auv_ws/devel/.private/stm32_servo/lib/stm32_servo/robot_six_go /home/yunxia/ros_auv_ws/devel/lib/stm32_servo/robot_six_go
+/home/yunxia/ros_auv_ws/devel/.private/stm32_servo/lib/pkgconfig/stm32_servo.pc /home/yunxia/ros_auv_ws/devel/lib/pkgconfig/stm32_servo.pc
+/home/yunxia/ros_auv_ws/devel/.private/stm32_servo/share/stm32_servo/cmake/stm32_servoConfig-version.cmake /home/yunxia/ros_auv_ws/devel/share/stm32_servo/cmake/stm32_servoConfig-version.cmake
+/home/yunxia/ros_auv_ws/devel/.private/stm32_servo/share/stm32_servo/cmake/stm32_servoConfig.cmake /home/yunxia/ros_auv_ws/devel/share/stm32_servo/cmake/stm32_servoConfig.cmake

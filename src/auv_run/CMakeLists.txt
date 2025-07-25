@@ -3,6 +3,7 @@ project(auv_run)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
+set(mavros_msgs_DIR "/home/yunxia/mavros_ws/devel/share/mavros_msgs/cmake")
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -139,6 +140,10 @@ add_executable(deepth_ctrl src/deepth_ctrl.cpp)
 add_executable(deepth_ctrl_1 src/deepth_ctrl_1.cpp)
 add_executable(auv_go src/auv_go.cpp)
 add_executable(motor src/motor.cpp)
+add_executable(auv_arm src/auv_arm.cpp)
+add_executable(hold src/hold.cpp)
+add_executable(depth_sub src/depth_sub.cpp)
+
 
 
 ## Rename C++ executable without prefix
@@ -162,6 +167,15 @@ target_link_libraries(auv_go
   ${catkin_LIBRARIES}
 )
 target_link_libraries(motor
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(auv_arm
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(hold
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(depth_sub
   ${catkin_LIBRARIES}
 )
 #############

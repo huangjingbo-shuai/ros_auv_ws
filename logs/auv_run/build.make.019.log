@@ -1,0 +1,7 @@
+[ 14%] Built target deepth_ctrl_1
+[ 28%] Built target depth_sub
+[ 57%] Built target auv_arm
+[ 57%] Built target deepth_ctrl
+[ 71%] Built target hold
+[ 85%] Built target auv_go
+[100%] Built target motor
