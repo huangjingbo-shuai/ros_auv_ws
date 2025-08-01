@@ -1,4 +1,1 @@
-[35m[1mScanning dependencies of target robot_six_go[0m
-[ 50%] [32mBuilding CXX object CMakeFiles/robot_six_go.dir/src/robot_six_go.cpp.o[0m
-[100%] [32m[1mLinking CXX executable /home/yunxia/ros_auv_ws/devel/.private/stm32_servo/lib/stm32_servo/robot_six_go[0m
 [100%] Built target robot_six_go

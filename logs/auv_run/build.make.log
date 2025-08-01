@@ -1,7 +1,4 @@
-[ 28%] Built target auv_arm
-[ 28%] Built target deepth_ctrl_1
-[ 42%] Built target motor
-[ 57%] Built target depth_sub
-[ 71%] Built target deepth_ctrl
-[ 85%] Built target auv_go
-[100%] Built target hold
+[35m[1mScanning dependencies of target rc1-4[0m
+[ 50%] [32mBuilding CXX object CMakeFiles/rc1-4.dir/src/rc1-4.cpp.o[0m
+[100%] [32m[1mLinking CXX executable /home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/rc1-4[0m
+[100%] Built target rc1-4
