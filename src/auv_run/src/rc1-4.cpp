@@ -5,6 +5,10 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <ctime>
+#include <fstream>
+#include <iomanip>
+#include <chrono>
+#include <sstream>
 
 class PIDController {
 private:
@@ -15,6 +19,9 @@ private:
     double integral_limit; // 添加积分限制
     ros::Time last_time;
     bool first_call;
+    
+    // 添加存储各项值的变量
+    double p_term_last, i_term_last, d_term_last;
 
 public:
     PIDController(double _kp, double _ki, double _kd, double _setpoint, 
@@ -23,7 +30,8 @@ public:
           integral(0.0), prev_error(0.0), 
           output_min(_output_min), output_max(_output_max),
           integral_limit(100.0), // 默认积分限制
-          first_call(true) {}
+          first_call(true),
+          p_term_last(0.0), i_term_last(0.0), d_term_last(0.0) {}
 
     double compute(double measurement) {
         ros::Time current_time = ros::Time::now();
@@ -45,6 +53,7 @@ public:
         
         // Proportional term
         double p_term = kp * error;
+        p_term_last = p_term;
         
         // Integral term with anti-windup
         integral += error * dt;
@@ -57,6 +66,7 @@ public:
         }
         
         double i_term = ki * integral;
+        i_term_last = i_term;
         
         // Derivative term
         double derivative = 0.0;
@@ -64,6 +74,7 @@ public:
             derivative = (error - prev_error) / dt;
         }
         double d_term = kd * derivative;
+        d_term_last = d_term;
         
         // Calculate total output
         double output = p_term + i_term + d_term;
@@ -88,12 +99,18 @@ public:
         integral = 0.0;
         prev_error = 0.0;
         first_call = true;
+        p_term_last = i_term_last = d_term_last = 0.0;
     }
     
     // 设置积分限制
     void setIntegralLimit(double limit) {
         integral_limit = limit;
     }
+    
+    // 获取各项值的方法
+    double getLastPTerm() const { return p_term_last; }
+    double getLastITerm() const { return i_term_last; }
+    double getLastDTerm() const { return d_term_last; }
 };
 
 class FlightControllerInterface {
@@ -116,10 +133,67 @@ private:
     // 电机输出系数，用于调整电机响应差异
     double motor3_factor;
     double motor4_factor;
+    
+    // 数据记录相关成员
+    std::ofstream data_file;
+    std::string csv_filename;
+    bool logging_enabled;
+    ros::Time start_time;
+    
+    // 生成带时间戳的文件名
+    std::string generateTimestampedFilename() {
+        auto now = std::chrono::system_clock::now();
+        auto in_time_t = std::chrono::system_clock::to_time_t(now);
+        
+        std::stringstream ss;
+        ss << "pid_data_";
+        ss << std::put_time(std::localtime(&in_time_t), "%Y%m%d_%H%M%S");
+        ss << ".csv";
+        
+        return ss.str();
+    }
+    
+    // 初始化CSV文件
+    void initDataLogging() {
+        if (logging_enabled) {
+            csv_filename = generateTimestampedFilename();
+            data_file.open(csv_filename);
+            
+            // 写入CSV头部
+            data_file << "timestamp,pitch_deg,error_deg,p_term,i_term,d_term,pid_output,motor3_pwm,motor4_pwm" << std::endl;
+            
+            // 记录开始时间
+            start_time = ros::Time::now();
+            
+            ROS_INFO("数据记录已开始，文件名: %s", csv_filename.c_str());
+        }
+    }
+    
+    // 记录一行数据
+    void logData(double pitch_deg, double error_deg, double p_term, double i_term, double d_term, 
+                double pid_output, uint16_t motor3_pwm, uint16_t motor4_pwm) {
+        if (logging_enabled && data_file.is_open()) {
+            // 计算相对时间戳（秒）
+            double elapsed = (ros::Time::now() - start_time).toSec();
+            
+            // 写入数据行
+            data_file << std::fixed << std::setprecision(3) 
+                     << elapsed << ","
+                     << pitch_deg << ","
+                     << error_deg << ","
+                     << p_term << ","
+                     << i_term << ","
+                     << d_term << ","
+                     << pid_output << ","
+                     << motor3_pwm << ","
+                     << motor4_pwm << std::endl;
+        }
+    }
 
 public:
     FlightControllerInterface() : current_pitch(0.0), base_throttle(1500),
-                                 motor3_factor(1.0), motor4_factor(1.0) {
+                                 motor3_factor(1.0), motor4_factor(1.0),
+                                 logging_enabled(true) {
         // 初始化RC控制发布器
         rc_pub = nh.advertise<mavros_msgs::OverrideRCIn>("/mavros/rc/override", 100);
         
@@ -133,18 +207,26 @@ public:
         imu_sub = nh.subscribe("/mavros/imu/data", 100, &FlightControllerInterface::imuCallback, this);
         ROS_INFO("已订阅IMU数据");
 
-        // 设置发布频率为20Hz
+        // 设置发布频率为100Hz
         rate = new ros::Rate(100);
         
         // 初始化PID控制器 (kp, ki, kd, setpoint, min_output, max_output)
-        // 这些参数需要根据实际情况调整
-        pitch_pid = new PIDController(1000.0, 2, 40.0, 0.0, -400.0, 400.0);
+        pitch_pid = new PIDController(350.0, 2, 100.0, 0.0, -400.0, 400.0);
         
         // 设置积分限制
         pitch_pid->setIntegralLimit(200.0);
+        
+        // 初始化数据记录
+        initDataLogging();
     }
 
     ~FlightControllerInterface() {
+        // 关闭数据文件
+        if (data_file.is_open()) {
+            data_file.close();
+            ROS_INFO("数据记录已结束，文件已保存: %s", csv_filename.c_str());
+        }
+        
         delete rate;
         delete pitch_pid;
     }
@@ -200,27 +282,36 @@ public:
         // 计算PID输出
         double pid_output = pitch_pid->compute(current_pitch);
         
+        // 获取PID各项值
+        double p_term = pitch_pid->getLastPTerm();
+        double i_term = pitch_pid->getLastITerm();
+        double d_term = pitch_pid->getLastDTerm();
+        
         // 应用电机系数调整
         double adjusted_output3 = pid_output * motor3_factor;
         double adjusted_output4 = pid_output * motor4_factor;
         
         // 根据PID输出调整两个电机的差值
         uint16_t throttle_ch3 = base_throttle - adjusted_output3;
-        uint16_t throttle_ch4 = base_throttle + adjusted_output4;
+        uint16_t throttle_ch4 = base_throttle - adjusted_output4;
         
         // 确保油门值在安全范围内
         throttle_ch3 = std::max((uint16_t)1000, std::min((uint16_t)2000, throttle_ch3));
         throttle_ch4 = std::max((uint16_t)1000, std::min((uint16_t)2000, throttle_ch4));
+        
+        // 计算角度（度）
+        double pitch_deg = current_pitch * 180.0 / M_PI;
+        double error_deg = (0.0 - current_pitch) * 180.0 / M_PI;
+        
+        // 记录数据
+        logData(pitch_deg, error_deg, p_term, i_term, d_term, pid_output, throttle_ch3, throttle_ch4);
         
         // 控制电机
         controlMotors(throttle_ch3, throttle_ch4);
         
         // 打印调试信息
         printf("\033[1;32m[PID] Pitch: %.2f°, Error: %.2f°, PID: %.2f, Motors: %d, %d\033[0m\n", 
-               current_pitch * 180.0 / M_PI, 
-               (0.0 - current_pitch) * 180.0 / M_PI,
-               pid_output, 
-               throttle_ch3, throttle_ch4);
+               pitch_deg, error_deg, pid_output, throttle_ch3, throttle_ch4);
         fflush(stdout);
     }
 
@@ -229,6 +320,22 @@ public:
         motor3_factor = factor3;
         motor4_factor = factor4;
         ROS_INFO("设置电机系数 - 电机3: %.2f, 电机4: %.2f", motor3_factor, motor4_factor);
+    }
+    
+    // 启用/禁用数据记录
+    void enableDataLogging(bool enable) {
+        if (enable && !logging_enabled) {
+            // 如果之前禁用，现在启用，创建新文件
+            logging_enabled = true;
+            initDataLogging();
+        } else if (!enable && logging_enabled) {
+            // 如果之前启用，现在禁用，关闭文件
+            logging_enabled = false;
+            if (data_file.is_open()) {
+                data_file.close();
+                ROS_INFO("数据记录已停止，文件已保存: %s", csv_filename.c_str());
+            }
+        }
     }
 
     // 运行演示
@@ -277,6 +384,7 @@ int main(int argc, char **argv) {
     
     return 0;
 }
+
 
 
 ////////////////////////////////////////成功控制3，4电机第一版////////////////////////////////////////////////////////
