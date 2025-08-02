@@ -142,6 +142,145 @@
 #         plot_pid_data(csv_file)
 #     else:
 #         print(f"文件不存在: {csv_file}")
+# import pandas as pd
+# import matplotlib.pyplot as plt
+# import numpy as np
+# import os
+# from matplotlib.gridspec import GridSpec
+
+# def plot_pid_data(csv_file):
+#     # Read CSV data
+#     print(f"Reading file: {csv_file}")
+#     df = pd.read_csv(csv_file)
+    
+#     # Create a large figure layout
+#     plt.figure(figsize=(14, 10))
+#     gs = GridSpec(3, 2)
+    
+#     # 1. Pitch angle and error
+#     ax1 = plt.subplot(gs[0, :])
+#     ax1.plot(df['timestamp'], df['pitch_deg'], 'b-', label='Pitch angle')
+#     ax1.plot(df['timestamp'], df['error_deg'], 'r-', label='Error')
+#     ax1.set_title('Pitch Angle and Error')
+#     ax1.set_ylabel('Angle (deg)')
+#     ax1.grid(True)
+#     ax1.legend()
+    
+#     # 2. PID output
+#     ax2 = plt.subplot(gs[1, :])
+#     ax2.plot(df['timestamp'], df['pid_output'], 'g-', label='PID Output')
+#     ax2.set_title('PID Controller Output')
+#     ax2.set_ylabel('Output Value')
+#     ax2.grid(True)
+#     ax2.legend()
+    
+#     # 3. PID components
+#     ax3 = plt.subplot(gs[2, 0])
+#     ax3.plot(df['timestamp'], df['p_term'], 'r-', label='P term')
+#     ax3.plot(df['timestamp'], df['i_term'], 'g-', label='I term')
+#     ax3.plot(df['timestamp'], df['d_term'], 'b-', label='D term')
+#     ax3.set_title('PID Components Contribution')
+#     ax3.set_xlabel('Time (s)')
+#     ax3.set_ylabel('Component Value')
+#     ax3.grid(True)
+#     ax3.legend()
+    
+#     # 4. Motor PWM values
+#     ax4 = plt.subplot(gs[2, 1])
+#     ax4.plot(df['timestamp'], df['motor3_pwm'], 'r-', label='Motor3 PWM')
+#     ax4.plot(df['timestamp'], df['motor4_pwm'], 'b-', label='Motor4 PWM')
+#     ax4.set_title('Motor PWM Values')
+#     ax4.set_xlabel('Time (s)')
+#     ax4.set_ylabel('PWM Value')
+#     ax4.grid(True)
+#     ax4.legend()
+    
+#     # Calculate some statistics
+#     pitch_mean = df['pitch_deg'].mean()
+#     pitch_std = df['pitch_deg'].std()
+#     error_mean = df['error_deg'].mean()
+#     error_std = df['error_deg'].std()
+    
+#     # Add statistics to the plot
+#     stats_text = f"Pitch mean: {pitch_mean:.2f}°, std: {pitch_std:.2f}°\n"
+#     stats_text += f"Error mean: {error_mean:.2f}°, std: {error_std:.2f}°"
+#     plt.figtext(0.5, 0.01, stats_text, ha='center', fontsize=10, 
+#                 bbox={'facecolor': 'lightgray', 'alpha': 0.5, 'pad': 5})
+    
+#     # Adjust layout
+#     plt.tight_layout()
+#     plt.subplots_adjust(bottom=0.08)
+    
+#     # Save the plot
+#     output_file = os.path.splitext(csv_file)[0] + '_analysis.png'
+#     plt.savefig(output_file, dpi=300)
+#     print(f"Plot saved as: {output_file}")
+    
+#     # Show the plot
+#     plt.show()
+    
+#     # Create oscillation analysis plot
+#     plt.figure(figsize=(14, 6))
+    
+#     # Calculate oscillation frequency and amplitude
+#     if len(df) > 50:  # Ensure enough data points
+#         # Detrend the data
+#         pitch_detrend = df['pitch_deg'] - df['pitch_deg'].rolling(window=20, min_periods=1).mean()
+        
+#         # Calculate FFT
+#         N = len(pitch_detrend)
+#         T = np.mean(np.diff(df['timestamp']))  # Average sampling interval
+#         yf = np.abs(np.fft.fft(pitch_detrend.values))
+#         xf = np.fft.fftfreq(N, T)[:N//2]
+#         yf = yf[:N//2]
+        
+#         # Plot frequency spectrum
+#         plt.subplot(1, 2, 1)
+#         plt.plot(xf[1:], yf[1:])  # Skip zero frequency
+#         plt.title('Pitch Oscillation Frequency Spectrum')
+#         plt.xlabel('Frequency (Hz)')
+#         plt.ylabel('Amplitude')
+#         plt.grid(True)
+        
+#         # Find dominant oscillation frequency
+#         max_idx = np.argmax(yf[1:]) + 1  # Skip zero frequency
+#         main_freq = xf[max_idx]
+#         main_amp = yf[max_idx]
+#         plt.axvline(x=main_freq, color='r', linestyle='--')
+#         plt.text(main_freq, main_amp, f'{main_freq:.2f} Hz', 
+#                  verticalalignment='bottom', horizontalalignment='right')
+        
+#         # Plot detrended pitch signal
+#         plt.subplot(1, 2, 2)
+#         plt.plot(df['timestamp'], pitch_detrend)
+#         plt.title('Detrended Pitch Signal')
+#         plt.xlabel('Time (s)')
+#         plt.ylabel('Pitch (deg)')
+#         plt.grid(True)
+        
+#         # Add oscillation info
+#         osc_text = f"Dominant frequency: {main_freq:.2f} Hz\nPeriod: {1/main_freq:.2f} s"
+#         plt.figtext(0.5, 0.01, osc_text, ha='center', fontsize=10, 
+#                     bbox={'facecolor': 'lightgray', 'alpha': 0.5, 'pad': 5})
+        
+#         # Save oscillation plot
+#         osc_file = os.path.splitext(csv_file)[0] + '_oscillation.png'
+#         plt.tight_layout()
+#         plt.subplots_adjust(bottom=0.15)
+#         plt.savefig(osc_file, dpi=300)
+#         print(f"Oscillation plot saved as: {osc_file}")
+        
+#         plt.show()
+
+# # Main program
+# if __name__ == "__main__":
+#     # Manually specify file path
+#     csv_file = "pid_data_20250802_153134.csv"  # Replace with your actual file path
+    
+#     if os.path.exists(csv_file):  # Check if file exists
+#         plot_pid_data(csv_file)
+#     else:
+#         print(f"File not found: {csv_file}")
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -149,135 +288,149 @@ import os
 from matplotlib.gridspec import GridSpec
 
 def plot_pid_data(csv_file):
-    # Read CSV data
     print(f"Reading file: {csv_file}")
     df = pd.read_csv(csv_file)
-    
-    # Create a large figure layout
+
+    # === 图1：Pitch角度和误差 + PID输出 + PID各项 + 电机PWM ===
     plt.figure(figsize=(14, 10))
     gs = GridSpec(3, 2)
-    
-    # 1. Pitch angle and error
+
+    # 1. Pitch角度和误差
     ax1 = plt.subplot(gs[0, :])
     ax1.plot(df['timestamp'], df['pitch_deg'], 'b-', label='Pitch angle')
-    ax1.plot(df['timestamp'], df['error_deg'], 'r-', label='Error')
+    ax1.plot(df['timestamp'], df['pitch_error_deg'], 'r-', label='Pitch error')
     ax1.set_title('Pitch Angle and Error')
     ax1.set_ylabel('Angle (deg)')
     ax1.grid(True)
     ax1.legend()
-    
-    # 2. PID output
+
+    # 2. PID输出
     ax2 = plt.subplot(gs[1, :])
-    ax2.plot(df['timestamp'], df['pid_output'], 'g-', label='PID Output')
-    ax2.set_title('PID Controller Output')
+    ax2.plot(df['timestamp'], df['pitch_output'], 'g-', label='Pitch PID Output')
+    ax2.set_title('Pitch PID Output')
     ax2.set_ylabel('Output Value')
     ax2.grid(True)
     ax2.legend()
-    
-    # 3. PID components
+
+    # 3. PID 各项贡献
     ax3 = plt.subplot(gs[2, 0])
-    ax3.plot(df['timestamp'], df['p_term'], 'r-', label='P term')
-    ax3.plot(df['timestamp'], df['i_term'], 'g-', label='I term')
-    ax3.plot(df['timestamp'], df['d_term'], 'b-', label='D term')
-    ax3.set_title('PID Components Contribution')
+    ax3.plot(df['timestamp'], df['pitch_p'], 'r-', label='P term')
+    ax3.plot(df['timestamp'], df['pitch_i'], 'g-', label='I term')
+    ax3.plot(df['timestamp'], df['pitch_d'], 'b-', label='D term')
+    ax3.set_title('Pitch PID Components')
     ax3.set_xlabel('Time (s)')
-    ax3.set_ylabel('Component Value')
+    ax3.set_ylabel('Value')
     ax3.grid(True)
     ax3.legend()
-    
-    # 4. Motor PWM values
+
+    # 4. 电机 PWM
     ax4 = plt.subplot(gs[2, 1])
     ax4.plot(df['timestamp'], df['motor3_pwm'], 'r-', label='Motor3 PWM')
     ax4.plot(df['timestamp'], df['motor4_pwm'], 'b-', label='Motor4 PWM')
     ax4.set_title('Motor PWM Values')
     ax4.set_xlabel('Time (s)')
-    ax4.set_ylabel('PWM Value')
+    ax4.set_ylabel('PWM')
     ax4.grid(True)
     ax4.legend()
-    
-    # Calculate some statistics
+
+    # 统计信息
     pitch_mean = df['pitch_deg'].mean()
     pitch_std = df['pitch_deg'].std()
-    error_mean = df['error_deg'].mean()
-    error_std = df['error_deg'].std()
-    
-    # Add statistics to the plot
+    error_mean = df['pitch_error_deg'].mean()
+    error_std = df['pitch_error_deg'].std()
     stats_text = f"Pitch mean: {pitch_mean:.2f}°, std: {pitch_std:.2f}°\n"
     stats_text += f"Error mean: {error_mean:.2f}°, std: {error_std:.2f}°"
-    plt.figtext(0.5, 0.01, stats_text, ha='center', fontsize=10, 
+    plt.figtext(0.5, 0.01, stats_text, ha='center', fontsize=10,
                 bbox={'facecolor': 'lightgray', 'alpha': 0.5, 'pad': 5})
-    
-    # Adjust layout
+
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.08)
-    
-    # Save the plot
+
     output_file = os.path.splitext(csv_file)[0] + '_analysis.png'
     plt.savefig(output_file, dpi=300)
     print(f"Plot saved as: {output_file}")
-    
-    # Show the plot
     plt.show()
-    
-    # Create oscillation analysis plot
-    plt.figure(figsize=(14, 6))
-    
-    # Calculate oscillation frequency and amplitude
-    if len(df) > 50:  # Ensure enough data points
-        # Detrend the data
-        pitch_detrend = df['pitch_deg'] - df['pitch_deg'].rolling(window=20, min_periods=1).mean()
-        
-        # Calculate FFT
-        N = len(pitch_detrend)
-        T = np.mean(np.diff(df['timestamp']))  # Average sampling interval
-        yf = np.abs(np.fft.fft(pitch_detrend.values))
-        xf = np.fft.fftfreq(N, T)[:N//2]
-        yf = yf[:N//2]
-        
-        # Plot frequency spectrum
-        plt.subplot(1, 2, 1)
-        plt.plot(xf[1:], yf[1:])  # Skip zero frequency
-        plt.title('Pitch Oscillation Frequency Spectrum')
-        plt.xlabel('Frequency (Hz)')
-        plt.ylabel('Amplitude')
-        plt.grid(True)
-        
-        # Find dominant oscillation frequency
-        max_idx = np.argmax(yf[1:]) + 1  # Skip zero frequency
-        main_freq = xf[max_idx]
-        main_amp = yf[max_idx]
-        plt.axvline(x=main_freq, color='r', linestyle='--')
-        plt.text(main_freq, main_amp, f'{main_freq:.2f} Hz', 
-                 verticalalignment='bottom', horizontalalignment='right')
-        
-        # Plot detrended pitch signal
-        plt.subplot(1, 2, 2)
-        plt.plot(df['timestamp'], pitch_detrend)
-        plt.title('Detrended Pitch Signal')
-        plt.xlabel('Time (s)')
-        plt.ylabel('Pitch (deg)')
-        plt.grid(True)
-        
-        # Add oscillation info
-        osc_text = f"Dominant frequency: {main_freq:.2f} Hz\nPeriod: {1/main_freq:.2f} s"
-        plt.figtext(0.5, 0.01, osc_text, ha='center', fontsize=10, 
-                    bbox={'facecolor': 'lightgray', 'alpha': 0.5, 'pad': 5})
-        
-        # Save oscillation plot
-        osc_file = os.path.splitext(csv_file)[0] + '_oscillation.png'
-        plt.tight_layout()
-        plt.subplots_adjust(bottom=0.15)
-        plt.savefig(osc_file, dpi=300)
-        print(f"Oscillation plot saved as: {osc_file}")
-        
-        plt.show()
 
-# Main program
+    # === 图2：Altitude PID 分析 ===
+    plt.figure(figsize=(12, 8))
+    plt.suptitle("Altitude PID Analysis")
+
+    # Altitude 和误差
+    plt.subplot(2, 1, 1)
+    plt.plot(df['timestamp'], df['altitude'], label='Altitude')
+    plt.plot(df['timestamp'], df['altitude_error'], label='Altitude Error')
+    plt.title("Altitude and Error")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Altitude")
+    plt.legend()
+    plt.grid(True)
+
+    # Altitude PID 各项
+    plt.subplot(2, 1, 2)
+    plt.plot(df['timestamp'], df['altitude_p'], label='P')
+    plt.plot(df['timestamp'], df['altitude_i'], label='I')
+    plt.plot(df['timestamp'], df['altitude_d'], label='D')
+    plt.plot(df['timestamp'], df['altitude_output'], label='Output')
+    plt.title("Altitude PID Components")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Output")
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.92)
+    alt_plot_file = os.path.splitext(csv_file)[0] + '_altitude.png'
+    plt.savefig(alt_plot_file, dpi=300)
+    print(f"Altitude plot saved as: {alt_plot_file}")
+    plt.show()
+
+    # # === 图3：Pitch频谱分析 ===
+    # if len(df) > 50:
+    #     plt.figure(figsize=(14, 6))
+
+    #     pitch_detrend = df['pitch_deg'] - df['pitch_deg'].rolling(window=20, min_periods=1).mean()
+    #     N = len(pitch_detrend)
+    #     T = np.mean(np.diff(df['timestamp']))
+    #     yf = np.abs(np.fft.fft(pitch_detrend.values))
+    #     xf = np.fft.fftfreq(N, T)[:N // 2]
+    #     yf = yf[:N // 2]
+
+    #     plt.subplot(1, 2, 1)
+    #     plt.plot(xf[1:], yf[1:])
+    #     plt.title('Pitch Frequency Spectrum')
+    #     plt.xlabel('Frequency (Hz)')
+    #     plt.ylabel('Amplitude')
+    #     plt.grid(True)
+
+    #     max_idx = np.argmax(yf[1:]) + 1
+    #     main_freq = xf[max_idx]
+    #     main_amp = yf[max_idx]
+    #     plt.axvline(x=main_freq, color='r', linestyle='--')
+    #     plt.text(main_freq, main_amp, f'{main_freq:.2f} Hz',
+    #              verticalalignment='bottom', horizontalalignment='right')
+
+    #     plt.subplot(1, 2, 2)
+    #     plt.plot(df['timestamp'], pitch_detrend)
+    #     plt.title('Detrended Pitch Signal')
+    #     plt.xlabel('Time (s)')
+    #     plt.ylabel('Pitch (deg)')
+    #     plt.grid(True)
+
+    #     osc_text = f"Dominant frequency: {main_freq:.2f} Hz\nPeriod: {1 / main_freq:.2f} s"
+    #     plt.figtext(0.5, 0.01, osc_text, ha='center', fontsize=10,
+    #                 bbox={'facecolor': 'lightgray', 'alpha': 0.5, 'pad': 5})
+
+    #     osc_file = os.path.splitext(csv_file)[0] + '_oscillation.png'
+    #     plt.tight_layout()
+    #     plt.subplots_adjust(bottom=0.15)
+    #     plt.savefig(osc_file, dpi=300)
+    #     print(f"Oscillation plot saved as: {osc_file}")
+    #     plt.show()
+
+# 主程序
 if __name__ == "__main__":
-    # Manually specify file path
-    csv_file = "pid_data_20250801_214443.csv"  # Replace with your actual file path
-    
-    if os.path.exists(csv_file):  # Check if file exists
+    csv_file = "pid_data_20250802_151732.csv"  # 替换为你实际的 CSV 文件路径
+    if os.path.exists(csv_file):
         plot_pid_data(csv_file)
     else:
         print(f"File not found: {csv_file}")
