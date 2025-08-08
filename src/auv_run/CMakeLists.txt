@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   mavros_msgs
 )
+find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets WebEngineCore WebEngineWidgets WebChannel SerialPort)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -148,6 +149,7 @@ add_executable(depth_hold src/depth_hold.cpp)
 add_executable(depth_hold_debug src/depth_hold_debug.cpp)
 add_executable(depth_pitch src/depth_pitch.cpp)
 add_executable(depth_pitch_siqu src/depth_pitch_siqu.cpp)
+add_executable(sbus_ctrl src/sbus_ctrl.cpp)
 
 
 ## Rename C++ executable without prefix
@@ -195,6 +197,10 @@ target_link_libraries(depth_pitch
   ${catkin_LIBRARIES}
 )
 target_link_libraries(depth_pitch_siqu
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(sbus_ctrl
+  Qt5::SerialPort
   ${catkin_LIBRARIES}
 )
 #############

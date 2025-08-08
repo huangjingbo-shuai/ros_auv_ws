@@ -1,3 +1,27 @@
+[35m[1mScanning dependencies of target app_interface_autogen[0m
 [ 20%] [34m[1mAutomatic MOC and UIC for target app_interface[0m
 [ 20%] Built target app_interface_autogen
+[35m[1mScanning dependencies of target app_interface[0m
+[ 40%] [32mBuilding CXX object CMakeFiles/app_interface.dir/app_interface_autogen/mocs_compilation.cpp.o[0m
+[ 60%] [32mBuilding CXX object CMakeFiles/app_interface.dir/src/motor_go.cpp.o[0m
+[ 80%] [32mBuilding CXX object CMakeFiles/app_interface.dir/src/mainwindow.cpp.o[0m
+[100%] [32m[1mLinking CXX executable /home/yunxia/ros_auv_ws/devel/.private/app_interface/lib/app_interface/app_interface[0m
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 3 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 4 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 5 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 6 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 7 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 8 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 9 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 10 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 11 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 12 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 13 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 14 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 15 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 16 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 17 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 18 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 19 (>= sh_info of 3)
+/usr/bin/ld: /home/yunxia/Qt/5.15.2/gcc_64/lib/libQt5WebEngineCore.so.5.15.2: .dynsym local symbol at index 20 (>= sh_info of 3)
 [100%] Built target app_interface

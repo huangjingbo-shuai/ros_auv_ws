@@ -1,103 +1,262 @@
-# PID调试参数配置文件
+# ROV 6DOF PID调试参数配置文件
 # 使用方法: rosparam load this_file.yaml 或在launch文件中加载
 
-# 调试模式设置
+# ============ 控制模式设置 ============
+# 控制模式：
+# 1 = 仅深度控制 (只控制CH3, CH4垂直推进器)
+# 2 = 仅俯仰角控制 (只控制CH3, CH4差分)
+# 3 = 仅偏航角控制 (只控制CH1, CH2差分)
+# 4 = 深度+俯仰角控制 (CH3, CH4)
+# 5 = 深度+偏航角控制 (CH1, CH2, CH3, CH4)
+# 6 = 俯仰角+偏航角控制 (CH1, CH2, CH3, CH4)
+# 7 = 全控制模式 (深度+俯仰+偏航，所有推进器，推荐)
+control_mode: 7
+
+# 深度控制调试模式：
 # 1 = 只调试加速度环 (内环)
 # 2 = 调试速度环+加速度环 (中环+内环)  
-# 3 = 全三环级联调试
+# 3 = 全三环级联调试 (推荐)
 debug_mode: 3
 
-# 目标深度(米)
+# ============ 目标设定 ============
+# 目标深度(米，负值表示水下)
 target_altitude: 0.6
-# # 位置环PID参数
-# position_pid:
-#   kp: 20.0
-#   ki: 0.05
-#   kd: 0.0
 
-# # 速度环PID参数  
-# velocity_pid:
-#   kp: 10.0
-#   ki: 0.05
-#   kd: 0.0
+# 目标俯仰角(度，正值表示机头向上)
+target_pitch: 0.0
 
-# # 加速度环PID参数 (建议从这个环开始调试)
-# acceleration_pid:
-#   kp: 0.18
-#   ki: 0.03
-#   kd: 0.9
+# 目标偏航角(度，正值表示向右转)
+target_yaw: 0.0
 
-# # 手动设定点 (用于单环或双环调试)
-# # 注意：在全三环模式(debug_mode: 3)下应该设置enable: false
-# manual_setpoints:
-#   enable: false          # 全三环模式下应设为false
-#   velocity: 0.13         # 速度设定点 (m/s)
-#   acceleration: 1.0      # 加速度设定点 (m/s²)
-# 位置环PID参数
+# ============ 深度控制PID参数 ============
+# 位置环PID参数 (深度外环)
 position_pid:
-  kp: 5.0
-  ki: 0.0
-  kd: 0.5
+  kp: 15.0      # 位置比例增益
+  ki: 0.0       # 位置积分增益 (谨慎使用)
+  kd: 0.5       # 位置微分增益
 
-# 速度环PID参数  
+# 速度环PID参数 (深度中环)
 velocity_pid:
-  kp: 15
-  ki: 0.0
-  kd: 0.5
+  kp: 15.0      # 速度比例增益
+  ki: 0.0       # 速度积分增益
+  kd: 0.5       # 速度微分增益
 
-# 加速度环PID参数 (建议从这个环开始调试)
+# 加速度环PID参数 (深度内环，建议从这个环开始调试)
 acceleration_pid:
-  kp: 5
-  ki: 0.03
-  kd: 0.5
+  kp: 1.0       # 加速度比例增益
+  ki: 0.03      # 加速度积分增益
+  kd: 0.5       # 加速度微分增益
 
-# 手动设定点 (用于单环或双环调试)
+# ============ 俯仰角控制PID参数 ============
+# 俯仰角PID参数 (单环控制)
+pitch_pid:
+  kp: 2.0       # 俯仰角比例增益
+  ki: 0.1       # 俯仰角积分增益
+  kd: 0.8       # 俯仰角微分增益
+
+# ============ 偏航角控制PID参数 ============
+# 偏航角PID参数 (单环控制)
+yaw_pid:
+  kp: 1.5       # 偏航角比例增益
+  ki: 0.05      # 偏航角积分增益
+  kd: 0.3       # 偏航角微分增益
+
+# ============ 死区和滤波参数 ============
+# 控制死区设置
+altitude_deadzone: 0.02    # 深度死区(米)
+pitch_deadzone: 2.0        # 俯仰角死区(度)
+yaw_deadzone: 5.0          # 偏航角死区(度)
+
+# 滤波参数
+pitch_filter_alpha: 0.3    # 俯仰角滤波系数 (0-1, 值越小滤波越强)
+yaw_filter_alpha: 0.3      # 偏航角滤波系数 (0-1, 值越小滤波越强)
+
+# 偏航角零点重置 (运行时设置)
+reset_yaw_zero: false      # 设为true可将当前角度设为新零点
+
+# ============ 手动设定点 (用于单环调试) ============
 # 注意：在全三环模式(debug_mode: 3)下应该设置enable: false
 manual_setpoints:
-  enable: true          # 全三环模式下应设为false
-  velocity: 0.13         # 速度设定点 (m/s)
-  acceleration: 0.2      # 加速度设定点 (m/s²)
+  enable: false          # 是否启用手动设定点
+  velocity: 0.13         # 手动速度设定点 (m/s)
+  acceleration: 0.2      # 手动加速度设定点 (m/s²)
 
-# 调试输出设置
-verbose_debug: true
+# ============ 调试输出设置 ============
+verbose_debug: true        # 是否显示详细的PID分量信息
 
-# ============ 新增：PWM控制参数 ============
+# ============ PWM控制参数 ============
 # PWM平滑控制参数（解决PWM跟不上PID计算的问题）
 pwm_base_change_rate: 3.0    # 基础PWM变化速率（小误差时）
 pwm_max_change_rate: 15.0    # 最大PWM变化速率（大误差时）
 pwm_tolerance: 3             # PWM到位判断容差
 pid_calculation_interval: 5   # PID计算间隔（控制周期数）
 
+# ============ 高级参数 ============
+# 基础油门值 (中性位置)
+base_throttle: 1500
 
-# ====== 调试建议和注意事项 ======
+# PWM死区补偿
+pwm_deadzone: 30
 
-# 1. PWM参数调整建议：
-#    - 如果PWM调整太慢，增大 pwm_base_change_rate 和 pwm_max_change_rate
-#    - 如果系统振荡，减小变化速率或增大 pid_calculation_interval
-#    - pwm_tolerance 建议保持在 2-5 之间
+# ============ 电机通道映射说明 ============
+# 本控制器适用于以下4推进器ROV电机配置：
+# CH1 (channels[0]): 右推进器 - 位于机器人右边，正转向前推(>1500)，反转向后推(<1500)
+# CH2 (channels[1]): 左推进器 - 位于机器人左边，正转向前推(>1500)，反转向后推(<1500)
+# CH3 (channels[2]): 前推进器 - 位于机器人正前方，PWM增加时向下产生推力
+# CH4 (channels[3]): 后推进器 - 位于机器人正后方，PWM增加时向下产生推力
+# 
+# 控制逻辑：
+# 深度控制：CH3和CH4同时增减PWM (同向控制)
+# 俯仰角控制：CH3和CH4差分控制 (对向控制)
+#   - 抬头 (pitch > 0): CH3减少推力，CH4增加推力
+#   - 低头 (pitch < 0): CH3增加推力，CH4减少推力
+# 偏航角控制：CH1和CH2差分控制 (对向控制)
+#   - 右转 (yaw > 0): CH1后推，CH2前推
+#   - 左转 (yaw < 0): CH1前推，CH2后推
+#
+# 电机PWM分配公式：
+# CH1 (右推进器) = base_throttle - yaw_output
+# CH2 (左推进器) = base_throttle + yaw_output  
+# CH3 (前推进器) = base_throttle + altitude_output - pitch_output
+# CH4 (后推进器) = base_throttle + altitude_output + pitch_output
 
-# 2. PID调试顺序：
-#    第一阶段：加速度环
-#    - 先调 kp：从0.1开始逐渐增大，直到响应足够快但不振荡
-#    - 再调 kd：消除超调和振荡
-#    - 最后调 ki：消除静差（小心积分饱和）
+# ============ 调试建议和注意事项 ============
+
+# 1. 调试顺序建议：
+#    阶段1：仅深度控制 (control_mode: 1)
+#    - 先调试加速度环 (debug_mode: 1)
+#    - 从 acceleration_pid 的 kp 开始，从0.1逐步增大到1.0
+#    - 再调 kd 消除振荡，通常0.3-0.8之间
+#    - 最后微调 ki，通常很小 0.01-0.05
 #    
-#    第二阶段：速度环
-#    - 加速度环调好后，开始调速度环kp
-#    - 给定小的速度指令，观察跟踪效果
+#    阶段2：加入速度环 (debug_mode: 2)  
+#    - 调节 velocity_pid 的 kp，从5.0开始
+#    - 观察速度跟踪性能，适当调整
 #    
-#    第三阶段：位置环  
-#    - 速度环调好后，最后调位置环
-#    - 从小的kp开始，避免过冲
+#    阶段3：加入位置环 (debug_mode: 3)
+#    - 调节 position_pid 的 kp，从1.0开始
+#    - 观察深度保持性能
+#    
+#    阶段4：仅俯仰角控制 (control_mode: 2)
+#    - 调节 pitch_pid 参数
+#    - kp 从1.0开始，kd 从0.5开始
+#    
+#    阶段5：仅偏航角控制 (control_mode: 3)
+#    - 调节 yaw_pid 参数
+#    - kp 从1.0开始，kd 从0.3开始
+#    - 测试左转右转响应
+#    
+#    阶段6：联合控制 (control_mode: 4, 5, 6, 7)
+#    - 先尝试两轴联合控制
+#    - 最后尝试全控制模式 (control_mode: 7)
+#    - 观察各轴之间的耦合效应
+#    - 微调各环参数达到最佳性能
 
-# 3. 常见问题和解决方法：
-#    - 如果系统响应慢：增大对应环的kp
-#    - 如果有振荡：减小kp或增大kd
-#    - 如果有超调：增大kd或减小kp
-#    - 如果有静差：适当增加ki，但要防止积分饱和
-#    - 如果PWM跳跃：检查pwm_change_rate设置
+# 2. 常见问题和解决方法：
+#    深度控制问题：
+#    - 响应慢：增大对应环的kp
+#    - 振荡：减小kp或增大kd  
+#    - 超调：增大kd或减小kp
+#    - 静差：适当增加ki (小心积分饱和)
+#    
+#    俯仰角控制问题：
+#    - 俯仰角振荡：减小pitch_pid的kp，增大kd
+#    - 俯仰角响应慢：增大pitch_pid的kp
+#    - 俯仰角偏移：适当增加pitch_pid的ki
+#    
+#    偏航角控制问题：
+#    - 偏航角振荡：减小yaw_pid的kp，增大kd
+#    - 偏航角响应慢：增大yaw_pid的kp
+#    - 偏航角漂移：适当增加yaw_pid的ki
+#    - 转向方向错误：检查CH1和CH2电机接线或调整PWM输出逻辑
+#    
+#    联合控制问题：
+#    - 各轴相互干扰：调整死区参数或降低增益
+#    - PWM跳跃：检查pwm_change_rate设置
+#    - 控制不稳定：逐一调试各单轴，再联合调试
+
+# 3. 参数调整命令示例：
+#    实时调整深度控制：
+#    rosparam set /position_pid/kp 20.0
+#    rosparam set /velocity_pid/kp 12.0  
+#    rosparam set /acceleration_pid/kp 1.2
+#    
+#    实时调整俯仰角控制：
+#    rosparam set /pitch_pid/kp 2.5
+#    rosparam set /pitch_pid/ki 0.15
+#    rosparam set /pitch_pid/kd 1.0
+#    
+#    实时调整偏航角控制：
+#    rosparam set /yaw_pid/kp 1.8
+#    rosparam set /yaw_pid/ki 0.08
+#    rosparam set /yaw_pid/kd 0.5
+#    
+#    实时调整目标值：
+#    rosparam set /target_altitude 0.8
+#    rosparam set /target_pitch 15.0
+#    rosparam set /target_yaw 45.0
+#    
+#    切换控制模式：
+#    rosparam set /control_mode 1  # 仅深度
+#    rosparam set /control_mode 2  # 仅俯仰  
+#    rosparam set /control_mode 3  # 仅偏航
+#    rosparam set /control_mode 4  # 深度+俯仰
+#    rosparam set /control_mode 5  # 深度+偏航
+#    rosparam set /control_mode 6  # 俯仰+偏航
+#    rosparam set /control_mode 7  # 全控制
+#    
+#    偏航角零点重置：
+#    rosparam set /reset_yaw_zero true  # 将当前角度设为新零点
 
 # 4. 安全建议：
-#    - 调试时建议target_altitude设小一点（0.3-0.5米）
+#    - 调试时建议target_altitude设小一点（0.3-0.6米）
+#    - 俯仰角目标不要设置过大（建议±30度内）
+#    - 偏航角目标建议在±90度内进行初步测试
 #    - 随时准备切换到手动模式
 #    - 观察电机温度，避免长时间高功率运行
+#    - 在浅水区进行初步调试
+#    - 确保ROV有足够的浮力储备
+#    - 测试偏航角控制时，确保周围有足够的旋转空间
+#    - 首次测试时建议降低PID增益，避免剧烈运动
+
+# 5. 性能优化：
+#    - 如果系统响应过快导致不稳定，增大pid_calculation_interval
+#    - 如果PWM更新太慢，减小pwm_base_change_rate和pwm_max_change_rate
+#    - 根据水体环境调整死区参数
+#    - 在静水中调试，避免海流干扰
+#    - 偏航角控制建议在相对静水环境中调试，避免水流影响
+#    - 如果偏航角漂移严重，适当增加yaw_deadzone或减小积分增益
+#    - 多轴联合控制时，可适当增大各轴死区避免相互干扰
+#    - 根据ROV实际性能调整滤波系数，平衡响应速度和稳定性
+
+# 6. 电机配置验证：
+#    在调试前，请验证电机配置：
+#    
+#    深度控制验证：
+#    - 设置 control_mode: 1, target_altitude: 0.5
+#      观察CH3和CH4推进器是否同时增加向下推力
+#    
+#    俯仰角控制验证：
+#    - 设置 control_mode: 2, target_pitch: 10.0  
+#      观察前推进器(CH3)推力是否减少，后推进器(CH4)推力是否增加
+#      这应该产生抬头力矩
+#    - 设置 control_mode: 2, target_pitch: -10.0
+#      观察前推进器(CH3)推力是否增加，后推进器(CH4)推力是否减少  
+#      这应该产生低头力矩
+#    
+#    偏航角控制验证：
+#    - 设置 control_mode: 3, target_yaw: 30.0
+#      观察右推进器(CH1)是否后推，左推进器(CH2)是否前推
+#      这应该产生右转力矩
+#    - 设置 control_mode: 3, target_yaw: -30.0
+#      观察右推进器(CH1)是否前推，左推进器(CH2)是否后推
+#      这应该产生左转力矩
+#    
+#    全控制验证：
+#    - 设置 control_mode: 7, target_altitude: 0.5, target_pitch: 10.0, target_yaw: 15.0
+#      观察所有4个推进器是否按预期响应
+#      
+#    如果力矩方向错误，可能需要：
+#    - 检查电机接线
+#    - 在配置文件中调整目标值符号
+#    - 或修改代码中的输出逻辑符号
