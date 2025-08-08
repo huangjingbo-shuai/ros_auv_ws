@@ -1,0 +1,18 @@
+<!-- PID调试launch文件 -->
+<!-- 使用方法: roslaunch your_package pid_debug.launch -->
+
+<launch>
+    <!-- 加载PID参数 -->
+    <rosparam file="$(find auv_run)/config/pid_params.yaml" command="load" />
+    
+    <!-- 启动PID调试节点 -->
+    <node name="depth_pitch_siqu" pkg="auv_run" type="depth_pitch_siqu" output="screen">
+        <!-- 可以在这里覆盖yaml文件中的参数 -->
+        <!-- <param name="debug_mode" value="1" /> -->
+        <!-- <param name="verbose_debug" value="true" /> -->
+    </node>
+    
+    <!-- 可选: 启动rqt参数动态调整工具 -->
+    <!-- <node name="rqt_reconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" /> -->
+    
+</launch>

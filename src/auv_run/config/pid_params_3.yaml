@@ -1,0 +1,57 @@
+# PID调试参数配置文件
+# 使用方法: roslaunch your_package your_launch_file.launch
+
+# 调试模式设置
+# 1 = 只调试加速度环 (内环)
+# 2 = 调试速度环+加速度环 (中环+内环)  
+# 3 = 全三环级联调试
+debug_mode: 3
+
+# 目标深度(米)
+target_altitude: 0.4
+
+# 位置环PID参数
+position_pid:
+  kp: 20
+  ki: 0.05
+  kd: 0
+
+# 速度环PID参数  
+velocity_pid:
+  kp: 10
+  ki: 0.05
+  kd: 0.0
+
+# 加速度环PID参数 (建议从这个环开始调试)
+acceleration_pid:
+  kp: 0.18
+  ki: 0.03
+  kd: 0.9
+
+# 手动设定点 (用于单环或双环调试)
+manual_setpoints:
+  enable: true
+  velocity: 0.13        # 速度设定点 (m/s)
+  acceleration: 1  # 加速度设定点 (m/s²)
+
+# 调试输出设置
+verbose_debug: true
+
+# ====== 不同阶段的调试建议 ======
+
+# 第一阶段: 只调试加速度环
+# debug_mode: 1
+# manual_setpoints/enable: true
+# manual_setpoints/acceleration: 0.0 (先设为0，观察是否稳定)
+# 调参顺序: 先调acceleration_pid/kp，再调kd，最后调ki
+
+# 第二阶段: 调试速度环+加速度环  
+# debug_mode: 2
+# manual_setpoints/enable: true
+# manual_setpoints/velocity: 0.1 (给一个小的速度指令)
+# 此时加速度环参数已经调好，开始调velocity_pid参数
+
+# 第三阶段: 全三环调试
+# debug_mode: 3  
+# manual_setpoints/enable: false (使用位置指令)
+# 开始调position_pid参数

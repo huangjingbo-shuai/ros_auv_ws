@@ -144,6 +144,11 @@ include_directories(
 # add_executable(hold src/hold.cpp)
 # add_executable(depth_sub src/depth_sub.cpp)
 add_executable(rc1-4 src/rc1-4.cpp)
+add_executable(depth_hold src/depth_hold.cpp)
+add_executable(depth_hold_debug src/depth_hold_debug.cpp)
+add_executable(depth_pitch src/depth_pitch.cpp)
+add_executable(depth_pitch_siqu src/depth_pitch_siqu.cpp)
+
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -180,7 +185,18 @@ add_executable(rc1-4 src/rc1-4.cpp)
 target_link_libraries(rc1-4
   ${catkin_LIBRARIES}
 )
-
+target_link_libraries(depth_hold
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(depth_hold_debug
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(depth_pitch
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(depth_pitch_siqu
+  ${catkin_LIBRARIES}
+)
 #############
 ## Install ##
 #############

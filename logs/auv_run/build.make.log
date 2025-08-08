@@ -1,4 +1,8 @@
-[35m[1mScanning dependencies of target rc1-4[0m
-[ 50%] [32mBuilding CXX object CMakeFiles/rc1-4.dir/src/rc1-4.cpp.o[0m
-[100%] [32m[1mLinking CXX executable /home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/rc1-4[0m
-[100%] Built target rc1-4
+[35m[1mScanning dependencies of target depth_pitch_siqu[0m
+[ 40%] Built target depth_hold_debug
+[ 40%] Built target rc1-4
+[ 60%] Built target depth_pitch
+[ 80%] Built target depth_hold
+[ 90%] [32mBuilding CXX object CMakeFiles/depth_pitch_siqu.dir/src/depth_pitch_siqu.cpp.o[0m
+[100%] [32m[1mLinking CXX executable /home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/depth_pitch_siqu[0m
+[100%] Built target depth_pitch_siqu

@@ -1,0 +1,138 @@
+# 双控制器PID调试参数配置文件
+# 使用方法: roslaunch your_package your_launch_file.launch
+
+# ================================
+# 深度控制PID参数（三环级联）
+# ================================
+
+# 深度控制调试模式设置
+# 1 = 只调试加速度环 (内环)
+# 2 = 调试速度环+加速度环 (中环+内环)  
+# 3 = 全三环级联调试
+altitude_debug_mode: 3
+
+# 目标深度(米)
+target_altitude: 0.5
+
+# 位置环PID参数
+position_pid:
+  kp: 10
+  ki: 0.05
+  kd: 0
+
+# 速度环PID参数  
+velocity_pid:
+  kp: 20
+  ki: 0.05
+  kd: 0.0
+
+# 加速度环PID参数 (建议从这个环开始调试)
+acceleration_pid:
+  kp: 0.18
+  ki: 0.1
+  kd: 0.9
+
+# 深度控制手动设定点 (用于单环或双环调试)
+altitude_manual_setpoints:
+  enable: false
+  velocity: 0.20        # 速度设定点 (m/s)
+  acceleration: 1.0     # 加速度设定点 (m/s²)
+
+# ================================
+# 俯仰角控制PID参数（单环PID）
+# ================================
+
+# 目标俯仰角(弧度) - 0.0为水平，正值为向上倾斜
+# 常用角度转换: 5° = 0.087 rad, 10° = 0.175 rad, 15° = 0.262 rad
+target_pitch: 2.0
+
+# 俯仰角控制单环PID参数
+# 注意：俯仰角控制通常需要较大的P值来快速响应角度变化
+pitch_pid:
+  kp: 0.0      # 比例增益，控制响应速度
+  ki: 0.0      # 积分增益，消除稳态误差  
+  kd: 0     # 微分增益，提高稳定性
+
+# ================================
+# 通用调试设置
+# ================================
+
+# 调试输出设置
+verbose_debug: true
+
+# ================================
+# 调试建议和说明
+# ================================
+
+# 【深度控制调试流程】（三环级联）
+# 第一阶段: 调试深度控制的加速度环
+# altitude_debug_mode: 1
+# altitude_manual_setpoints/enable: true
+# altitude_manual_setpoints/acceleration: 0.0 (先设为0，观察是否稳定)
+# 调参顺序: 先调altitude_acceleration_pid/kp，再调kd，最后调ki
+
+# 第二阶段: 调试深度控制的速度环+加速度环  
+# altitude_debug_mode: 2
+# altitude_manual_setpoints/enable: true
+# altitude_manual_setpoints/velocity: 0.1 (给一个小的速度指令)
+# 此时加速度环参数已经调好，开始调altitude_velocity_pid参数
+
+# 第三阶段: 调试深度控制的全三环
+# altitude_debug_mode: 3  
+# altitude_manual_setpoints/enable: false (使用位置指令)
+# 开始调altitude_position_pid参数
+
+# 【俯仰角控制调试流程】（单环PID）
+# 俯仰角控制比深度控制简单得多，只需要调一个PID控制器
+# 建议在深度控制调好后再调俯仰角控制
+
+# 第一步: 测试P控制器
+# pitch_pid/kp: 50.0 (从较小值开始)
+# pitch_pid/ki: 0.0
+# pitch_pid/kd: 0.0
+# target_pitch: 5.0 (5度测试)
+# 观察系统是否能跟踪目标角度，如果响应过慢增加kp，过快减小kp
+
+# 第二步: 添加D控制器
+# 在P控制器基础上，逐步增加kd来提高稳定性
+# pitch_pid/kd: 10.0 (从小开始，逐步增加)
+# 如果出现高频震荡，减小kd
+
+# 第三步: 添加I控制器（如果需要）
+# 通常俯仰角控制不需要积分项，除非存在明显的稳态误差
+# pitch_pid/ki: 0.1 (从很小的值开始)
+
+# 【参数调节经验值】
+# 深度控制参数范围:
+#   - position_pid/kp: 5-30
+#   - velocity_pid/kp: 5-15  
+#   - acceleration_pid/kp: 0.1-1.0
+
+# 俯仰角控制参数范围:
+#   - pitch_pid/kp: 50-200 (根据系统响应调整)
+#   - pitch_pid/ki: 0-5    (通常保持很小或为0)
+#   - pitch_pid/kd: 5-50   (根据稳定性需求调整)
+
+# 【实时调参命令示例】
+# 深度控制:
+# rosparam set /altitude_position_pid/kp 25.0
+# rosparam set /altitude_velocity_pid/kp 12.0
+# rosparam set /altitude_acceleration_pid/kp 0.5
+# rosparam set /target_altitude 0.6
+# rosparam set /altitude_debug_mode 2
+
+# 俯仰角控制:
+# rosparam set /pitch_pid/kp 120.0
+# rosparam set /pitch_pid/kd 25.0
+# rosparam set /target_pitch 5.0  # 5度倾斜
+
+# 【混合控制原理】
+# 前推进器PWM = 基础推力 + 深度输出 - 俯仰角输出
+# 后推进器PWM = 基础推力 + 深度输出 + 俯仰角输出
+# - 深度输出控制总推力（上浮/下沉）
+# - 俯仰角输出控制推力差（前倾/后倾）
+
+# 【调试优先级】
+# 1. 先调好深度控制，确保能稳定悬停
+# 2. 再调俯仰角控制，在悬停基础上实现角度控制
+# 3. 俯仰角控制的输出范围要适当，避免影响深度稳定性

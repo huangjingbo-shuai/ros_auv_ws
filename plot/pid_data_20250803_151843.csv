@@ -1,0 +1,1 @@
+timestamp,altitude,altitude_error,velocity_z,accel_z,pos_p,pos_i,pos_d,vel_p,vel_i,vel_d,acc_p,acc_i,acc_d,pos_out,vel_out,acc_out,motor3_pwm,motor4_pwm
