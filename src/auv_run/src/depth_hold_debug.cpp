@@ -379,12 +379,19 @@ private:
     bool logging_enabled;
     ros::Time start_time;
     
-    // PWM平滑
+    // 修正后的PWM控制变量
     uint16_t current_pwm_ch3;
     uint16_t current_pwm_ch4;
     uint16_t target_pwm_ch3;
     uint16_t target_pwm_ch4;
-    double pwm_change_rate;
+    
+    // PWM平滑控制
+    double pwm_base_change_rate;
+    double pwm_max_change_rate;
+    
+    // PWM累积机制（解决小数截断问题）
+    double pwm_accumulator_ch3;
+    double pwm_accumulator_ch4;
     
     uint16_t last_stable_pwm_ch3;
     uint16_t last_stable_pwm_ch4;
@@ -393,6 +400,12 @@ private:
     double altitude_deadzone;
     int count;
     uint16_t pwm_deadzone;
+    
+    // PID计算控制
+    bool pid_calculation_enabled;
+    int pid_calculation_interval;
+    int pid_calculation_counter;
+    double last_altitude_output;
     
     // 调试相关
     int debug_print_counter;
@@ -418,7 +431,8 @@ private:
             data_file << "timestamp,debug_mode,altitude,altitude_error,velocity_z,accel_z,"
                       << "pos_setpoint,vel_setpoint,acc_setpoint,"
                       << "pos_p,pos_i,pos_d,vel_p,vel_i,vel_d,acc_p,acc_i,acc_d,"
-                      << "pos_out,vel_out,acc_out,final_output,motor3_pwm,motor4_pwm" << std::endl;
+                      << "pos_out,vel_out,acc_out,final_output,motor3_pwm,motor4_pwm,"
+                      << "pid_calc_enabled" << std::endl;
             
             start_time = ros::Time::now();
             ROS_INFO("调试数据记录已开始，文件名: %s", csv_filename.c_str());
@@ -432,7 +446,8 @@ private:
                 double vel_p, double vel_i, double vel_d,
                 double acc_p, double acc_i, double acc_d,
                 double pos_out, double vel_out, double acc_out, double final_output,
-                uint16_t motor3_pwm, uint16_t motor4_pwm) {
+                uint16_t motor3_pwm, uint16_t motor4_pwm,
+                bool pid_calc_enabled) {
         if (logging_enabled && data_file.is_open()) {
             double elapsed = (ros::Time::now() - start_time).toSec();
             
@@ -451,7 +466,26 @@ private:
                      << acc_p << "," << acc_i << "," << acc_d << ","
                      << pos_out << "," << vel_out << "," << acc_out << ","
                      << final_output << ","
-                     << motor3_pwm << "," << motor4_pwm << std::endl;
+                     << motor3_pwm << "," << motor4_pwm << ","
+                     << (pid_calc_enabled ? 1 : 0) << std::endl;
+        }
+    }
+
+    // 动态计算PWM变化速率
+    double calculatePWMChangeRate() {
+        uint16_t max_diff = std::max(
+            std::abs((int)current_pwm_ch3 - (int)target_pwm_ch3),
+            std::abs((int)current_pwm_ch4 - (int)target_pwm_ch4)
+        );
+        
+        if (max_diff <= 5) {
+            return pwm_base_change_rate;  // 小误差时使用基础速率
+        } else if (max_diff <= 20) {
+            return pwm_base_change_rate * 2;  // 中等误差时加速
+        } else if (max_diff <= 50) {
+            return pwm_base_change_rate * 5;  // 大误差时大幅加速
+        } else {
+            return pwm_max_change_rate;  // 极大误差时使用最大速率
         }
     }
 
@@ -463,9 +497,11 @@ public:
                                  target_pwm_ch3(1500), target_pwm_ch4(1500),
                                  last_stable_pwm_ch3(1500), last_stable_pwm_ch4(1500),
                                  in_deadzone_last_time(false),
-                                 pwm_change_rate(1),
+                                 pwm_base_change_rate(3.0), pwm_max_change_rate(15.0),
                                  altitude_deadzone(0.0),
                                  pwm_deadzone(30), count(0),
+                                 pid_calculation_enabled(true), pid_calculation_interval(5), 
+                                 pid_calculation_counter(0), last_altitude_output(0.0),
                                  debug_print_counter(0), verbose_debug(false) {
         
         rc_pub = nh.advertise<mavros_msgs::OverrideRCIn>("/mavros/rc/override", 100);
@@ -506,11 +542,19 @@ public:
         // 目标深度
         nh.param("target_altitude", target_altitude, 0.5);
         
+        // PWM平滑参数
+        nh.param("pwm_base_change_rate", pwm_base_change_rate, 3.0);
+        nh.param("pwm_max_change_rate", pwm_max_change_rate, 15.0);
+        nh.param("pid_calculation_interval", pid_calculation_interval, 5);
+        
         ROS_INFO("=== 载入PID参数 ===");
         ROS_INFO("位置环PID: P=%.3f, I=%.3f, D=%.3f", pos_kp, pos_ki, pos_kd);
         ROS_INFO("速度环PID: P=%.3f, I=%.3f, D=%.3f", vel_kp, vel_ki, vel_kd);
         ROS_INFO("加速度环PID: P=%.3f, I=%.3f, D=%.3f", acc_kp, acc_ki, acc_kd);
         ROS_INFO("目标深度: %.2f 米", target_altitude);
+        ROS_INFO("PWM平滑参数: 基础速率=%.1f, 最大速率=%.1f", 
+                 pwm_base_change_rate, pwm_max_change_rate);
+        ROS_INFO("PID计算间隔: %d 个周期", pid_calculation_interval);
         
         // 使用参数服务器的值初始化PID控制器
         altitude_pid = new DebuggableCascadedPIDController(
@@ -654,6 +698,19 @@ public:
                 disableManualSetpoints();
             }
         }
+        
+        // 读取PWM平滑参数
+        double new_base_rate, new_max_rate;
+        int new_interval;
+        if (nh.getParam("pwm_base_change_rate", new_base_rate)) {
+            pwm_base_change_rate = new_base_rate;
+        }
+        if (nh.getParam("pwm_max_change_rate", new_max_rate)) {
+            pwm_max_change_rate = new_max_rate;
+        }
+        if (nh.getParam("pid_calculation_interval", new_interval)) {
+            pid_calculation_interval = new_interval;
+        }
     }
     
     void setTargetAltitude(double depth) {
@@ -665,19 +722,30 @@ public:
     void stabilize() {
         altitude_pid->setMeasurements(current_altitude, current_velocity_z, current_accel_z);
         
-        double altitude_output = 0.0;
+        double altitude_output = last_altitude_output;  // 默认使用上次的输出
         double altitude_error = target_altitude - current_altitude;
         bool in_deadzone_now = std::abs(altitude_error) <= altitude_deadzone;
-
-        if (!in_deadzone_now) {
+        
+        // 固定周期PID计算逻辑：每5个周期计算一次PID
+        bool should_calculate_pid = false;
+        
+        pid_calculation_counter++;
+        if (pid_calculation_counter >= pid_calculation_interval) {
+            should_calculate_pid = true;
+            pid_calculation_counter = 0;
+        }
+        
+        // 只有在需要计算PID时才进行计算
+        if (should_calculate_pid && !in_deadzone_now) {
             altitude_output = altitude_pid->compute();
+            last_altitude_output = altitude_output;  // 保存这次的输出
 
             if (altitude_output > 0) {
                 altitude_output += pwm_deadzone;
             } else if (altitude_output < 0) {
-                // altitude_output -= pwm_deadzone;
-                altitude_output += 30;
+                altitude_output -= pwm_deadzone;
             }
+            
             target_pwm_ch3 = base_throttle + (altitude_output);
             target_pwm_ch4 = base_throttle + (altitude_output);
             
@@ -686,7 +754,9 @@ public:
             
             last_stable_pwm_ch3 = target_pwm_ch3;
             last_stable_pwm_ch4 = target_pwm_ch4;
-        } else {
+            
+            pid_calculation_enabled = true;
+        } else if (in_deadzone_now) {
             if (!in_deadzone_last_time) {
                 altitude_pid->resetIntegralOnly();
                 ROS_INFO("进入深度死区，保持最后稳定PWM值: %d, %d", last_stable_pwm_ch3, last_stable_pwm_ch4);
@@ -694,6 +764,10 @@ public:
             
             target_pwm_ch3 = last_stable_pwm_ch3;
             target_pwm_ch4 = last_stable_pwm_ch4;
+            pid_calculation_enabled = false;
+        } else {
+            // PWM还在调整中或者还没到PID计算时间，保持当前目标不变
+            pid_calculation_enabled = false;
         }
         
         in_deadzone_last_time = in_deadzone_now;
@@ -720,13 +794,15 @@ public:
         double vel_out = altitude_pid->getVelocityOutput();
         double acc_out = altitude_pid->getAccelOutput();
         
+        // 执行PWM平滑调整
         smoothPWMTransition();
         
         // 记录调试数据
         logData((int)mode, current_altitude, altitude_error, current_velocity_z, current_accel_z,
                 pos_setpoint, vel_setpoint, acc_setpoint,
                 pos_p, pos_i, pos_d, vel_p, vel_i, vel_d, acc_p, acc_i, acc_d,
-                pos_out, vel_out, acc_out, altitude_output, current_pwm_ch3, current_pwm_ch4);
+                pos_out, vel_out, acc_out, last_altitude_output, current_pwm_ch3, current_pwm_ch4,
+                should_calculate_pid);
         
         controlMotors(current_pwm_ch3, current_pwm_ch4);
         
@@ -760,6 +836,13 @@ public:
             printf("  位置设定: %.3fm, 速度设定: %.4fm/s, 加速度设定: %.3fm/s²\n", 
                    pos_setpoint, vel_setpoint, acc_setpoint);
             
+            printf("\033[1;35mPWM控制状态:\033[0m\n");
+            printf("  目标PWM: %d, %d | 当前PWM: %d, %d\n", 
+                   target_pwm_ch3, target_pwm_ch4, current_pwm_ch3, current_pwm_ch4);
+            printf("  PID计算: %s | 计数器: %d/%d\n", 
+                   (should_calculate_pid ? "是" : "否"),
+                   pid_calculation_counter, pid_calculation_interval);
+            
             if (verbose_debug) {
                 printf("\033[1;35mPID分量:\033[0m\n");
                 printf("  位置环 - P: %6.3f, I: %6.3f, D: %6.3f → 输出: %6.3f\n", 
@@ -770,8 +853,7 @@ public:
                        acc_p, acc_i, acc_d, acc_out);
             }
             
-            printf("\033[1;31m最终输出: %.2f, 电机PWM: %d, %d\033[0m\n", 
-                   altitude_output, current_pwm_ch3, current_pwm_ch4);
+            printf("\033[1;31m最终输出: %.2f\033[0m\n", last_altitude_output);
             
             printf("\033[1;37m按键提示: 可在另一个终端中使用rostopic或rosparam动态调整参数\033[0m\n");
             fflush(stdout);
@@ -779,16 +861,29 @@ public:
     }
     
     void smoothPWMTransition() {
+        // 动态计算PWM变化速率
+        double change_rate = calculatePWMChangeRate();
+        
+        // 对ch3进行平滑调整
         if (current_pwm_ch3 < target_pwm_ch3) {
-            current_pwm_ch3 = std::min(target_pwm_ch3, static_cast<uint16_t>(current_pwm_ch3 + pwm_change_rate));
+            uint16_t step = std::min((uint16_t)change_rate, 
+                                    (uint16_t)(target_pwm_ch3 - current_pwm_ch3));
+            current_pwm_ch3 += step;
         } else if (current_pwm_ch3 > target_pwm_ch3) {
-            current_pwm_ch3 = std::max(target_pwm_ch3, static_cast<uint16_t>(current_pwm_ch3 - pwm_change_rate));
+            uint16_t step = std::min((uint16_t)change_rate, 
+                                    (uint16_t)(current_pwm_ch3 - target_pwm_ch3));
+            current_pwm_ch3 -= step;
         }
         
+        // 对ch4进行平滑调整
         if (current_pwm_ch4 < target_pwm_ch4) {
-            current_pwm_ch4 = std::min(target_pwm_ch4, static_cast<uint16_t>(current_pwm_ch4 + pwm_change_rate));
+            uint16_t step = std::min((uint16_t)change_rate, 
+                                    (uint16_t)(target_pwm_ch4 - current_pwm_ch4));
+            current_pwm_ch4 += step;
         } else if (current_pwm_ch4 > target_pwm_ch4) {
-            current_pwm_ch4 = std::max(target_pwm_ch4, static_cast<uint16_t>(current_pwm_ch4 - pwm_change_rate));
+            uint16_t step = std::min((uint16_t)change_rate, 
+                                    (uint16_t)(current_pwm_ch4 - target_pwm_ch4));
+            current_pwm_ch4 -= step;
         }
     }
     
@@ -799,6 +894,7 @@ public:
         }
         
         ROS_INFO("=== PID调试模式演示开始 ===");
+        ROS_INFO("简化的PID控制：固定每%d个周期更新一次PID", pid_calculation_interval);
         ROS_INFO("默认开启全三环模式");
         ROS_INFO("你可以通过以下命令实时调整参数:");
         ROS_INFO("rosparam set /position_pid/kp 5.0");
@@ -806,6 +902,9 @@ public:
         ROS_INFO("rosparam set /acceleration_pid/kp 0.8");
         ROS_INFO("rosparam set /debug_mode 1  # 1=加速度环, 2=速度+加速度, 3=全三环");
         ROS_INFO("rosparam set /target_altitude 0.8");
+        ROS_INFO("rosparam set /pwm_base_change_rate 5.0  # PWM基础变化速率");
+        ROS_INFO("rosparam set /pwm_max_change_rate 20.0  # PWM最大变化速率");
+        ROS_INFO("rosparam set /pid_calculation_interval 3  # PID计算间隔(周期数)");
         
         // 从ROS参数获取调试模式
         int debug_mode = 3;

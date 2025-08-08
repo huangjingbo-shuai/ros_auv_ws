@@ -3,7 +3,7 @@
 
 <launch>
     <!-- 加载PID参数 -->
-    <rosparam file="$(find auv_run)/config/pid_params.yaml" command="load" />
+    <rosparam file="$(find auv_run)/config/pid_params_3.yaml" command="load" />
     
     <!-- 启动PID调试节点 -->
     <node name="depth_hold_debug" pkg="auv_run" type="depth_hold_debug" output="screen">
