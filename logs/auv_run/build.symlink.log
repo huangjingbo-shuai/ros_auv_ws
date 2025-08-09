@@ -1,9 +1,9 @@
-Symlinking /home/yunxia/ros_auv_ws/devel/lib/auv_run/depth_pitch_siqu
-Symlinking /home/yunxia/ros_auv_ws/devel/lib/auv_run/depth_hold_debug
-Symlinking /home/yunxia/ros_auv_ws/devel/lib/auv_run/depth_pitch
-Symlinking /home/yunxia/ros_auv_ws/devel/lib/auv_run/depth_hold
-Symlinking /home/yunxia/ros_auv_ws/devel/lib/auv_run/sbus_ctrl
-Symlinking /home/yunxia/ros_auv_ws/devel/lib/auv_run/rc1-4
-Symlinking /home/yunxia/ros_auv_ws/devel/lib/pkgconfig/auv_run.pc
-Symlinking /home/yunxia/ros_auv_ws/devel/share/auv_run/cmake/auv_runConfig-version.cmake
-Symlinking /home/yunxia/ros_auv_ws/devel/share/auv_run/cmake/auv_runConfig.cmake
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/depth_pitch_siqu, /home/yunxia/ros_auv_ws/devel/lib/auv_run/depth_pitch_siqu)
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/depth_hold_debug, /home/yunxia/ros_auv_ws/devel/lib/auv_run/depth_hold_debug)
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/depth_pitch, /home/yunxia/ros_auv_ws/devel/lib/auv_run/depth_pitch)
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/depth_hold, /home/yunxia/ros_auv_ws/devel/lib/auv_run/depth_hold)
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/sbus_ctrl, /home/yunxia/ros_auv_ws/devel/lib/auv_run/sbus_ctrl)
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/rc1-4, /home/yunxia/ros_auv_ws/devel/lib/auv_run/rc1-4)
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/pkgconfig/auv_run.pc, /home/yunxia/ros_auv_ws/devel/lib/pkgconfig/auv_run.pc)
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/auv_run/share/auv_run/cmake/auv_runConfig-version.cmake, /home/yunxia/ros_auv_ws/devel/share/auv_run/cmake/auv_runConfig-version.cmake)
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/auv_run/share/auv_run/cmake/auv_runConfig.cmake, /home/yunxia/ros_auv_ws/devel/share/auv_run/cmake/auv_runConfig.cmake)

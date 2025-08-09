@@ -1,7 +1,7 @@
-Symlinking /home/yunxia/ros_auv_ws/devel/lib/pkgconfig/yolo.pc
-Symlinking /home/yunxia/ros_auv_ws/devel/lib/yolo/deepth_logger.py
-Symlinking /home/yunxia/ros_auv_ws/devel/lib/yolo/usb_cam_sub.py
-Symlinking /home/yunxia/ros_auv_ws/devel/lib/yolo/deepth_pic.py
-Symlinking /home/yunxia/ros_auv_ws/devel/lib/yolo/cam_cv.py
-Symlinking /home/yunxia/ros_auv_ws/devel/share/yolo/cmake/yoloConfig-version.cmake
-Symlinking /home/yunxia/ros_auv_ws/devel/share/yolo/cmake/yoloConfig.cmake
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/yolo/lib/pkgconfig/yolo.pc, /home/yunxia/ros_auv_ws/devel/lib/pkgconfig/yolo.pc)
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/yolo/lib/yolo/deepth_logger.py, /home/yunxia/ros_auv_ws/devel/lib/yolo/deepth_logger.py)
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/yolo/lib/yolo/usb_cam_sub.py, /home/yunxia/ros_auv_ws/devel/lib/yolo/usb_cam_sub.py)
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/yolo/lib/yolo/deepth_pic.py, /home/yunxia/ros_auv_ws/devel/lib/yolo/deepth_pic.py)
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/yolo/lib/yolo/cam_cv.py, /home/yunxia/ros_auv_ws/devel/lib/yolo/cam_cv.py)
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/yolo/share/yolo/cmake/yoloConfig-version.cmake, /home/yunxia/ros_auv_ws/devel/share/yolo/cmake/yoloConfig-version.cmake)
+Linked: (/home/yunxia/ros_auv_ws/devel/.private/yolo/share/yolo/cmake/yoloConfig.cmake, /home/yunxia/ros_auv_ws/devel/share/yolo/cmake/yoloConfig.cmake)
