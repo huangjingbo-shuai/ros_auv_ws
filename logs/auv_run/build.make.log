@@ -1,7 +1,7 @@
 [35m[1mScanning dependencies of target sbus_ctrl[0m
-[ 16%] Built target depth_pitch_siqu
-[ 33%] Built target depth_hold_debug
-[ 50%] Built target rc1-4
+[ 16%] Built target depth_hold_debug
+[ 33%] Built target rc1-4
+[ 66%] Built target depth_pitch_siqu
 [ 66%] Built target depth_pitch
 [ 75%] [32mBuilding CXX object CMakeFiles/sbus_ctrl.dir/src/sbus_ctrl.cpp.o[0m
 [ 91%] Built target depth_hold
