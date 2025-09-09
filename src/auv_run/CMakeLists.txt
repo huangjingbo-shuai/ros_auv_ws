@@ -14,6 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   geometry_msgs
   mavros_msgs
+  serial
 )
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets WebEngineCore WebEngineWidgets WebChannel SerialPort)
 

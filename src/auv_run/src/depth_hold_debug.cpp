@@ -51,7 +51,7 @@ public:
         : kp(_kp), ki(_ki), kd(_kd), setpoint(_setpoint),
           integral(0.0), prev_error(0.0), 
           output_min(_output_min), output_max(_output_max),
-          integral_limit(100.0),
+          integral_limit(500.0),
           first_call(true),
           p_term_last(0.0), i_term_last(0.0), d_term_last(0.0) {}
 
@@ -182,7 +182,7 @@ public:
         
         position_pid->setIntegralLimit(5.0);
         velocity_pid->setIntegralLimit(10.0);
-        accel_pid->setIntegralLimit(50.0);
+        accel_pid->setIntegralLimit(400.0);
     }
     
     ~DebuggableCascadedPIDController() {
@@ -921,9 +921,9 @@ public:
             }
         } else if (in_altitude_deadzone) {
             if (!in_deadzone_last_time_altitude) {
-                altitude_pid->resetIntegralOnly();
+                // altitude_pid->resetIntegralOnly();
             }
-            altitude_output = 0;
+            // altitude_output = 0;
         }
         
         // Pitch角控制计算

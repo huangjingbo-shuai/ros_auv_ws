@@ -1,9 +1,9 @@
-[35m[1mScanning dependencies of target sbus_ctrl[0m
-[ 16%] Built target depth_hold_debug
-[ 33%] Built target rc1-4
-[ 66%] Built target depth_pitch_siqu
-[ 66%] Built target depth_pitch
-[ 75%] [32mBuilding CXX object CMakeFiles/sbus_ctrl.dir/src/sbus_ctrl.cpp.o[0m
-[ 91%] Built target depth_hold
-[100%] [32m[1mLinking CXX executable /home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/sbus_ctrl[0m
-[100%] Built target sbus_ctrl
+[35m[1mScanning dependencies of target depth_hold_debug[0m
+[ 25%] Built target rc1-4
+[ 33%] Built target depth_pitch
+[ 50%] Built target depth_pitch_siqu
+[ 66%] Built target depth_hold
+[ 83%] Built target sbus_ctrl
+[ 91%] [32mBuilding CXX object CMakeFiles/depth_hold_debug.dir/src/depth_hold_debug.cpp.o[0m
+[100%] [32m[1mLinking CXX executable /home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/depth_hold_debug[0m
+[100%] Built target depth_hold_debug

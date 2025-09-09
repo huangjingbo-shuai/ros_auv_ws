@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <launch>
     <!-- 可调节的Kp参数 -->
-    <param name="kp_x" value="0.002" type="double"/>  <!-- 水平Kp参数 -->
+    <param name="kp_x" value="0.004" type="double"/>  <!-- 水平Kp参数 -->
     <!-- <param name="kp_y" value="0.25" type="double"/>  垂直Kp参数 -->
-    <param name="kp_y" value="-0.001" type="double"/>
+    <param name="kp_y" value="-0.004" type="double"/>
     <!-- 1. 相机图像发布节点 -->
     <node name="usb_cam_sub" pkg="yolo" type="usb_cam_sub.py" output="screen">
         <param name="video_device" value="/dev/video0"/>
@@ -19,7 +19,7 @@
     
     <!-- 3. 舵机人脸跟踪节点 -->
     <node name="sbus_ctrl" pkg="auv_run" type="sbus_ctrl" output="screen">
-        <param name="serial_port" value="/dev/ttyUSB0"/>
+        <!-- <param name="serial_port" value="/dev/ttyUSB0"/> -->
     </node>
     
 </launch>
