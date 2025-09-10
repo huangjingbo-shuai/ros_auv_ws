@@ -543,7 +543,7 @@ public:
         ROS_INFO("解锁服务已准备就绪");
         
         imu_sub = nh.subscribe("/mavros/imu/data", 100, &FlightControllerInterface::imuCallback, this);
-        altitude_sub = nh.subscribe("/mavros/global_position/rel_alt", 100, 
+        altitude_sub = nh.subscribe("/mavros/global_position/rel_alt", 100,
                                    &FlightControllerInterface::altitudeCallback, this);
         velocity_sub = nh.subscribe("/mavros/global_position/local", 100,
                                    &FlightControllerInterface::odometryCallback, this);
@@ -959,9 +959,9 @@ public:
             }
         } else if (in_yaw_deadzone) {
             if (!in_deadzone_last_time_yaw) {
-                yaw_pid->resetIntegralOnly();
+                // yaw_pid->resetIntegralOnly();
             }
-            yaw_output = 0;
+            // yaw_output = 0;
         }
         
         in_deadzone_last_time_altitude = in_altitude_deadzone;
