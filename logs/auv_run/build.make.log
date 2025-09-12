@@ -1,9 +1,6 @@
-[35m[1mScanning dependencies of target depth_hold_debug[0m
-[ 25%] Built target rc1-4
-[ 33%] Built target depth_pitch
-[ 50%] Built target depth_pitch_siqu
-[ 66%] Built target depth_hold
+[ 16%] Built target depth_pitch
+[ 33%] Built target depth_hold_debug
+[ 50%] Built target depth_hold
+[ 66%] Built target depth_pitch_siqu
 [ 83%] Built target sbus_ctrl
-[ 91%] [32mBuilding CXX object CMakeFiles/depth_hold_debug.dir/src/depth_hold_debug.cpp.o[0m
-[100%] [32m[1mLinking CXX executable /home/yunxia/ros_auv_ws/devel/.private/auv_run/lib/auv_run/depth_hold_debug[0m
-[100%] Built target depth_hold_debug
+[100%] Built target rc1-4

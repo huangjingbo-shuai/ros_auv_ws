@@ -1,6 +1,7 @@
 yolo
 /home/yunxia/ros_auv_ws/devel/.private/yolo/lib/pkgconfig/yolo.pc /home/yunxia/ros_auv_ws/devel/lib/pkgconfig/yolo.pc
 /home/yunxia/ros_auv_ws/devel/.private/yolo/lib/yolo/deepth_logger.py /home/yunxia/ros_auv_ws/devel/lib/yolo/deepth_logger.py
+/home/yunxia/ros_auv_ws/devel/.private/yolo/lib/yolo/cv_yolov.py /home/yunxia/ros_auv_ws/devel/lib/yolo/cv_yolov.py
 /home/yunxia/ros_auv_ws/devel/.private/yolo/lib/yolo/usb_cam_sub.py /home/yunxia/ros_auv_ws/devel/lib/yolo/usb_cam_sub.py
 /home/yunxia/ros_auv_ws/devel/.private/yolo/lib/yolo/deepth_pic.py /home/yunxia/ros_auv_ws/devel/lib/yolo/deepth_pic.py
 /home/yunxia/ros_auv_ws/devel/.private/yolo/lib/yolo/cam_cv.py /home/yunxia/ros_auv_ws/devel/lib/yolo/cam_cv.py

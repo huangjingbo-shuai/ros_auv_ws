@@ -5,6 +5,7 @@
 #include <std_msgs/Float64.h>
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/Point.h>
 #include <nav_msgs/Odometry.h>
 #include <dynamic_reconfigure/server.h>
 #include <ctime>
@@ -25,12 +26,9 @@ enum class PIDDebugMode {
 // 控制模式枚举
 enum class ControlMode {
     DEPTH_ONLY = 1,           // 只控制深度
-    PITCH_ONLY = 2,           // 只控制俯仰角
-    YAW_ONLY = 3,             // 只控制偏航角
-    DEPTH_AND_PITCH = 4,      // 控制深度和俯仰角
-    DEPTH_AND_YAW = 5,        // 控制深度和偏航角
-    PITCH_AND_YAW = 6,        // 控制俯仰角和偏航角
-    ALL_CONTROL = 7           // 全控制模式(深度+俯仰+偏航)
+    YAW_ONLY = 2,             // 只控制偏航角
+    DEPTH_AND_YAW = 3,        // 控制深度和偏航角（视觉）
+    VISUAL_TRACKING = 4       // 视觉跟踪模式（深度保持+视觉Yaw）
 };
 
 class PIDController {
@@ -341,16 +339,14 @@ private:
     ros::Subscriber imu_sub;
     ros::Subscriber altitude_sub;
     ros::Subscriber velocity_sub;
+    ros::Subscriber aruco_pixel_sub;  // 新增：订阅ArUco像素坐标
     ros::Rate* rate;
     
     // 深度控制PID
     DebuggableCascadedPIDController* altitude_pid;
     
-    // Pitch角控制PID
-    PIDController* pitch_pid;
-    
-    // Yaw角控制PID
-    PIDController* yaw_pid;
+    // 视觉Yaw角控制PID
+    PIDController* visual_yaw_pid;
     
     // 控制模式
     ControlMode control_mode;
@@ -361,24 +357,27 @@ private:
     double current_accel_z;
     double target_altitude;
     
-    // Pitch角相关变量
-    double current_pitch;
-    double current_pitch_rate;
-    double target_pitch;
-    double pitch_filter_alpha;
+    // 视觉Yaw控制相关变量
+    double current_pixel_x;        // 当前ArUco中心像素X坐标
+    double current_pixel_y;        // 当前ArUco中心像素Y坐标
+    double target_pixel_x;         // 目标像素X坐标（相机中心）
+    double target_pixel_y;         // 目标像素Y坐标（相机中心）
+    double pixel_error_x;          // 像素误差X
+    double pixel_error_y;          // 像素误差Y
+    bool aruco_detected;           // ArUco是否检测到
+    ros::Time last_aruco_time;     // 上次检测到ArUco的时间
+    double aruco_timeout;          // ArUco超时时间
     
-    // Yaw角相关变量
-    double current_yaw;
-    double current_yaw_rate;
-    double target_yaw;
-    double initial_yaw;          // 初始偏航角（作为参考零点）
-    double yaw_filter_alpha;
-    bool yaw_initialized;
+    // 相机参数
+    double camera_cx;              // 相机光心X坐标
+    double camera_cy;              // 相机光心Y坐标
+    double camera_fx;              // X方向焦距
+    double camera_fy;              // Y方向焦距
     
     // PWM控制变量
     uint16_t base_throttle;
     uint16_t current_pwm_ch1, current_pwm_ch2;  // CH1右推进器, CH2左推进器 (Yaw控制)
-    uint16_t current_pwm_ch3, current_pwm_ch4;  // CH3前推进器, CH4后推进器 (深度+Pitch控制)
+    uint16_t current_pwm_ch3, current_pwm_ch4;  // CH3前推进器, CH4后推进器 (深度控制)
     uint16_t target_pwm_ch1, target_pwm_ch2;
     uint16_t target_pwm_ch3, target_pwm_ch4;
     
@@ -389,12 +388,10 @@ private:
     uint16_t last_stable_pwm_ch1, last_stable_pwm_ch2;
     uint16_t last_stable_pwm_ch3, last_stable_pwm_ch4;
     bool in_deadzone_last_time_altitude;
-    bool in_deadzone_last_time_pitch;
-    bool in_deadzone_last_time_yaw;
+    bool in_deadzone_last_time_visual_yaw;
     
     double altitude_deadzone;
-    double pitch_deadzone;
-    double yaw_deadzone;
+    double visual_yaw_deadzone;
     uint16_t pwm_deadzone;
     
     // PID计算控制
@@ -402,8 +399,7 @@ private:
     int pid_calculation_interval;
     int pid_calculation_counter;
     double last_altitude_output;
-    double last_pitch_output;
-    double last_yaw_output;
+    double last_visual_yaw_output;
     
     // 数据记录
     std::ofstream data_file;
@@ -420,7 +416,7 @@ private:
         auto in_time_t = std::chrono::system_clock::to_time_t(now);
         
         std::stringstream ss;
-        ss << "pid_debug_data_";
+        ss << "rov_visual_debug_data_";
         ss << std::put_time(std::localtime(&in_time_t), "%Y%m%d_%H%M%S");
         ss << ".csv";
         
@@ -434,15 +430,13 @@ private:
             
             data_file << "timestamp,control_mode,debug_mode,"
                       << "altitude,altitude_error,velocity_z,accel_z,"
-                      << "pitch,pitch_error,pitch_rate,"
-                      << "yaw,yaw_error,yaw_rate,"
+                      << "pixel_x,pixel_y,pixel_error_x,pixel_error_y,aruco_detected,"
                       << "alt_pos_setpoint,alt_vel_setpoint,alt_acc_setpoint,"
-                      << "pitch_setpoint,pitch_output,yaw_setpoint,yaw_output,"
+                      << "visual_yaw_setpoint,visual_yaw_output,"
                       << "alt_pos_p,alt_pos_i,alt_pos_d,"
                       << "alt_vel_p,alt_vel_i,alt_vel_d,"
                       << "alt_acc_p,alt_acc_i,alt_acc_d,"
-                      << "pitch_p,pitch_i,pitch_d,"
-                      << "yaw_p,yaw_i,yaw_d,"
+                      << "visual_yaw_p,visual_yaw_i,visual_yaw_d,"
                       << "alt_pos_out,alt_vel_out,alt_acc_out,alt_final_output,"
                       << "motor1_pwm,motor2_pwm,motor3_pwm,motor4_pwm,"
                       << "pid_calc_enabled" << std::endl;
@@ -454,15 +448,13 @@ private:
     
     void logData(int control_mode, int debug_mode, 
                 double altitude, double altitude_error, double velocity_z, double accel_z,
-                double pitch, double pitch_error, double pitch_rate,
-                double yaw, double yaw_error, double yaw_rate,
+                double pixel_x, double pixel_y, double pixel_error_x, double pixel_error_y, bool aruco_detected,
                 double alt_pos_setpoint, double alt_vel_setpoint, double alt_acc_setpoint,
-                double pitch_setpoint, double pitch_output, double yaw_setpoint, double yaw_output,
+                double visual_yaw_setpoint, double visual_yaw_output,
                 double alt_pos_p, double alt_pos_i, double alt_pos_d,
                 double alt_vel_p, double alt_vel_i, double alt_vel_d,
                 double alt_acc_p, double alt_acc_i, double alt_acc_d,
-                double pitch_p, double pitch_i, double pitch_d,
-                double yaw_p, double yaw_i, double yaw_d,
+                double visual_yaw_p, double visual_yaw_i, double visual_yaw_d,
                 double alt_pos_out, double alt_vel_out, double alt_acc_out, double alt_final_output,
                 uint16_t motor1_pwm, uint16_t motor2_pwm, uint16_t motor3_pwm, uint16_t motor4_pwm,
                 bool pid_calc_enabled) {
@@ -473,15 +465,13 @@ private:
                      << elapsed << ","
                      << control_mode << "," << debug_mode << ","
                      << altitude << "," << altitude_error << "," << velocity_z << "," << accel_z << ","
-                     << pitch << "," << pitch_error << "," << pitch_rate << ","
-                     << yaw << "," << yaw_error << "," << yaw_rate << ","
+                     << pixel_x << "," << pixel_y << "," << pixel_error_x << "," << pixel_error_y << "," << (aruco_detected ? 1 : 0) << ","
                      << alt_pos_setpoint << "," << alt_vel_setpoint << "," << alt_acc_setpoint << ","
-                     << pitch_setpoint << "," << pitch_output << "," << yaw_setpoint << "," << yaw_output << ","
+                     << visual_yaw_setpoint << "," << visual_yaw_output << ","
                      << alt_pos_p << "," << alt_pos_i << "," << alt_pos_d << ","
                      << alt_vel_p << "," << alt_vel_i << "," << alt_vel_d << ","
                      << alt_acc_p << "," << alt_acc_i << "," << alt_acc_d << ","
-                     << pitch_p << "," << pitch_i << "," << pitch_d << ","
-                     << yaw_p << "," << yaw_i << "," << yaw_d << ","
+                     << visual_yaw_p << "," << visual_yaw_i << "," << visual_yaw_d << ","
                      << alt_pos_out << "," << alt_vel_out << "," << alt_acc_out << ","
                      << alt_final_output << ","
                      << motor1_pwm << "," << motor2_pwm << "," << motor3_pwm << "," << motor4_pwm << ","
@@ -509,31 +499,24 @@ private:
         }
     }
 
-    // 角度标准化函数，将角度限制在[-180, 180]范围内
-    double normalizeAngle(double angle) {
-        while (angle > 180.0) angle -= 360.0;
-        while (angle < -180.0) angle += 360.0;
-        return angle;
-    }
-
 public:
     FlightControllerInterface() : 
         current_altitude(0.0), current_velocity_z(0.0), current_accel_z(0.0), target_altitude(0.5),
-        current_pitch(0.0), current_pitch_rate(0.0), target_pitch(0.0), pitch_filter_alpha(0.3),
-        current_yaw(0.0), current_yaw_rate(0.0), target_yaw(0.0), initial_yaw(0.0), 
-        yaw_filter_alpha(0.3), yaw_initialized(false),
+        current_pixel_x(0.0), current_pixel_y(0.0), target_pixel_x(318.509118), target_pixel_y(247.737583),
+        pixel_error_x(0.0), pixel_error_y(0.0), aruco_detected(false), aruco_timeout(2.0),
+        camera_cx(318.509118), camera_cy(247.737583), camera_fx(410.971988), camera_fy(412.393625),
         base_throttle(1500), logging_enabled(true),
         current_pwm_ch1(1500), current_pwm_ch2(1500), current_pwm_ch3(1500), current_pwm_ch4(1500),
         target_pwm_ch1(1500), target_pwm_ch2(1500), target_pwm_ch3(1500), target_pwm_ch4(1500),
         last_stable_pwm_ch1(1500), last_stable_pwm_ch2(1500),
         last_stable_pwm_ch3(1500), last_stable_pwm_ch4(1500),
-        in_deadzone_last_time_altitude(false), in_deadzone_last_time_pitch(false), in_deadzone_last_time_yaw(false),
+        in_deadzone_last_time_altitude(false), in_deadzone_last_time_visual_yaw(false),
         pwm_base_change_rate(3.0), pwm_max_change_rate(15.0),
-        altitude_deadzone(0.0), pitch_deadzone(2.0), yaw_deadzone(5.0), pwm_deadzone(30),
+        altitude_deadzone(0.02), visual_yaw_deadzone(10.0), pwm_deadzone(30),
         pid_calculation_enabled(true), pid_calculation_interval(5), 
-        pid_calculation_counter(0), last_altitude_output(0.0), last_pitch_output(0.0), last_yaw_output(0.0),
+        pid_calculation_counter(0), last_altitude_output(0.0), last_visual_yaw_output(0.0),
         debug_print_counter(0), verbose_debug(false),
-        control_mode(ControlMode::ALL_CONTROL) {
+        control_mode(ControlMode::VISUAL_TRACKING) {
         
         rc_pub = nh.advertise<mavros_msgs::OverrideRCIn>("/mavros/rc/override", 100);
         
@@ -547,6 +530,10 @@ public:
                                    &FlightControllerInterface::altitudeCallback, this);
         velocity_sub = nh.subscribe("/mavros/global_position/local", 100,
                                    &FlightControllerInterface::odometryCallback, this);
+        
+        // 订阅ArUco像素坐标
+        aruco_pixel_sub = nh.subscribe("/aruco_pixel", 10, 
+                                      &FlightControllerInterface::arucoPixelCallback, this);
 
         rate = new ros::Rate(100);
         
@@ -554,8 +541,7 @@ public:
         double pos_kp, pos_ki, pos_kd;
         double vel_kp, vel_ki, vel_kd;
         double acc_kp, acc_ki, acc_kd;
-        double pitch_kp, pitch_ki, pitch_kd;
-        double yaw_kp, yaw_ki, yaw_kd;
+        double visual_yaw_kp, visual_yaw_ki, visual_yaw_kd;
         
         // 深度控制PID参数
         nh.param("position_pid/kp", pos_kp, 3.0);
@@ -570,24 +556,17 @@ public:
         nh.param("acceleration_pid/ki", acc_ki, 0.1);
         nh.param("acceleration_pid/kd", acc_kd, 0.5);
         
-        // Pitch角控制PID参数
-        nh.param("pitch_pid/kp", pitch_kp, 2.0);
-        nh.param("pitch_pid/ki", pitch_ki, 0.1);
-        nh.param("pitch_pid/kd", pitch_kd, 0.5);
-        
-        // Yaw角控制PID参数
-        nh.param("yaw_pid/kp", yaw_kp, 1.5);
-        nh.param("yaw_pid/ki", yaw_ki, 0.05);
-        nh.param("yaw_pid/kd", yaw_kd, 0.3);
+        // 视觉Yaw控制PID参数
+        nh.param("visual_yaw_pid/kp", visual_yaw_kp, 2.0);
+        nh.param("visual_yaw_pid/ki", visual_yaw_ki, 0.05);
+        nh.param("visual_yaw_pid/kd", visual_yaw_kd, 0.8);
         
         // 目标值
         nh.param("target_altitude", target_altitude, 0.5);
-        nh.param("target_pitch", target_pitch, 0.0);
-        nh.param("target_yaw", target_yaw, 0.0);
         
         // 控制模式
         int mode;
-        nh.param("control_mode", mode, 7);
+        nh.param("control_mode", mode, 4);
         control_mode = static_cast<ControlMode>(mode);
         
         // PWM平滑参数
@@ -597,17 +576,25 @@ public:
         
         // 死区参数
         nh.param("altitude_deadzone", altitude_deadzone, 0.02);
-        nh.param("pitch_deadzone", pitch_deadzone, 2.0);
-        nh.param("yaw_deadzone", yaw_deadzone, 5.0);
+        nh.param("visual_yaw_deadzone", visual_yaw_deadzone, 10.0);
+        
+        // 相机参数
+        nh.param("camera_cx", camera_cx, 318.509118);
+        nh.param("camera_cy", camera_cy, 247.737583);
+        nh.param("camera_fx", camera_fx, 410.971988);
+        nh.param("camera_fy", camera_fy, 412.393625);
+        
+        target_pixel_x = camera_cx;
+        target_pixel_y = camera_cy;
         
         ROS_INFO("=== 载入PID参数 ===");
         ROS_INFO("深度控制 - 位置环PID: P=%.3f, I=%.3f, D=%.3f", pos_kp, pos_ki, pos_kd);
         ROS_INFO("深度控制 - 速度环PID: P=%.3f, I=%.3f, D=%.3f", vel_kp, vel_ki, vel_kd);
         ROS_INFO("深度控制 - 加速度环PID: P=%.3f, I=%.3f, D=%.3f", acc_kp, acc_ki, acc_kd);
-        ROS_INFO("俯仰角控制PID: P=%.3f, I=%.3f, D=%.3f", pitch_kp, pitch_ki, pitch_kd);
-        ROS_INFO("偏航角控制PID: P=%.3f, I=%.3f, D=%.3f", yaw_kp, yaw_ki, yaw_kd);
-        ROS_INFO("目标深度: %.2f 米, 目标俯仰角: %.1f 度, 目标偏航角: %.1f 度", target_altitude, target_pitch, target_yaw);
-        ROS_INFO("控制模式: %d (1=仅深度, 2=仅俯仰, 3=仅偏航, 4=深度+俯仰, 5=深度+偏航, 6=俯仰+偏航, 7=全控制)", (int)control_mode);
+        ROS_INFO("视觉Yaw控制PID: P=%.3f, I=%.3f, D=%.3f", visual_yaw_kp, visual_yaw_ki, visual_yaw_kd);
+        ROS_INFO("目标深度: %.2f 米", target_altitude);
+        ROS_INFO("控制模式: %d (1=仅深度, 2=仅视觉Yaw, 3=深度+视觉Yaw, 4=视觉跟踪)", (int)control_mode);
+        ROS_INFO("相机参数: 光心(%.1f, %.1f), 焦距(%.1f, %.1f)", camera_cx, camera_cy, camera_fx, camera_fy);
         
         // 初始化PID控制器
         altitude_pid = new DebuggableCascadedPIDController(
@@ -618,21 +605,14 @@ public:
             -400.0, 400.0
         );
         
-        pitch_pid = new PIDController(
-            pitch_kp, pitch_ki, pitch_kd,
-            target_pitch,
-            -400.0, 400.0
-        );
-        
-        yaw_pid = new PIDController(
-            yaw_kp, yaw_ki, yaw_kd,
-            target_yaw,
+        visual_yaw_pid = new PIDController(
+            visual_yaw_kp, visual_yaw_ki, visual_yaw_kd,
+            0.0,  // 目标像素误差为0
             -400.0, 400.0
         );
         
         altitude_pid->setFilterCoefficients(0.2, 0.3);
-        pitch_pid->setIntegralLimit(50.0);
-        yaw_pid->setIntegralLimit(50.0);
+        visual_yaw_pid->setIntegralLimit(100.0);
         
         initDataLogging();
     }
@@ -645,61 +625,12 @@ public:
         
         delete rate;
         delete altitude_pid;
-        delete pitch_pid;
-        delete yaw_pid;
+        delete visual_yaw_pid;
     }
     
     void imuCallback(const sensor_msgs::Imu::ConstPtr& msg) {
         // 获取加速度
         current_accel_z = 9.9 - msg->linear_acceleration.z;
-        
-        // 直接从四元数计算俯仰角和偏航角，避免tf2依赖问题
-        double qx = msg->orientation.x;
-        double qy = msg->orientation.y;
-        double qz = msg->orientation.z;
-        double qw = msg->orientation.w;
-        
-        // 从四元数计算俯仰角（弧度）
-        double pitch_rad = std::asin(2.0 * (qw * qy - qz * qx));
-        
-        // 从四元数计算偏航角（弧度）
-        double yaw_rad = std::atan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz));
-        
-        // 将弧度转换为度并应用滤波
-        double pitch_deg = pitch_rad * 180.0 / M_PI;
-        double yaw_deg = yaw_rad * 180.0 / M_PI;
-        
-        pitch_deg = normalizeAngle(pitch_deg);
-        yaw_deg = normalizeAngle(yaw_deg);
-        
-        // 初始化yaw零点
-        if (!yaw_initialized) {
-            initial_yaw = yaw_deg;
-            yaw_initialized = true;
-            ROS_INFO("偏航角零点已初始化: %.1f 度", initial_yaw);
-        }
-        
-        // 计算相对于初始位置的偏航角
-        double relative_yaw = normalizeAngle(yaw_deg - initial_yaw);
-        
-        current_pitch = pitch_filter_alpha * pitch_deg + (1 - pitch_filter_alpha) * current_pitch;
-        current_yaw = yaw_filter_alpha * relative_yaw + (1 - yaw_filter_alpha) * current_yaw;
-        
-        // 计算角速率（简单差分）
-        static double last_pitch = current_pitch;
-        static double last_yaw = current_yaw;
-        static ros::Time last_time = ros::Time::now();
-        ros::Time current_time = ros::Time::now();
-        double dt = (current_time - last_time).toSec();
-        
-        if (dt > 0) {
-            current_pitch_rate = (current_pitch - last_pitch) / dt;
-            current_yaw_rate = normalizeAngle(current_yaw - last_yaw) / dt;
-        }
-        
-        last_pitch = current_pitch;
-        last_yaw = current_yaw;
-        last_time = current_time;
     }
     
     void altitudeCallback(const std_msgs::Float64::ConstPtr& msg) {
@@ -708,6 +639,21 @@ public:
     
     void odometryCallback(const nav_msgs::Odometry::ConstPtr& msg) {
         current_velocity_z = msg->twist.twist.linear.z;
+    }
+    
+    void arucoPixelCallback(const geometry_msgs::Point::ConstPtr& msg) {
+        current_pixel_x = msg->x;
+        current_pixel_y = msg->y;
+        
+        // 计算像素误差
+        pixel_error_x = current_pixel_x - target_pixel_x;
+        pixel_error_y = current_pixel_y - target_pixel_y;
+        
+        aruco_detected = true;
+        last_aruco_time = ros::Time::now();
+        
+        ROS_DEBUG("ArUco检测到: 像素(%.1f, %.1f), 误差(%.1f, %.1f)", 
+                  current_pixel_x, current_pixel_y, pixel_error_x, pixel_error_y);
     }
     
     bool armVehicle() {
@@ -731,10 +677,10 @@ public:
             msg.channels[i] = 65535;
         }
         
-        msg.channels[0] = throttle_ch1;  // CH1: 右推进器 (机器人右边，用于Yaw控制)
-        msg.channels[1] = throttle_ch2;  // CH2: 左推进器 (机器人左边，用于Yaw控制)
-        msg.channels[2] = throttle_ch3;  // CH3: 前推进器 (机器人正前方，用于深度+Pitch控制)
-        msg.channels[3] = throttle_ch4;  // CH4: 后推进器 (机器人正后方，用于深度+Pitch控制)
+        msg.channels[0] = throttle_ch1;  // CH1: 右推进器 (用于Yaw控制)
+        msg.channels[1] = throttle_ch2;  // CH2: 左推进器 (用于Yaw控制)
+        msg.channels[2] = throttle_ch3;  // CH3: 前推进器 (用于深度控制)
+        msg.channels[3] = throttle_ch4;  // CH4: 后推进器 (用于深度控制)
         
         rc_pub.publish(msg);
     }
@@ -742,7 +688,7 @@ public:
     // 设置控制模式
     void setControlMode(int mode) {
         control_mode = static_cast<ControlMode>(mode);
-        ROS_INFO("控制模式设置为: %d (1=仅深度, 2=仅俯仰, 3=深度+俯仰)", mode);
+        ROS_INFO("控制模式设置为: %d (1=仅深度, 2=仅视觉Yaw, 3=深度+视觉Yaw, 4=视觉跟踪)", mode);
     }
     
     // PID调试接口函数
@@ -762,42 +708,15 @@ public:
         altitude_pid->updateAccelPID(kp, ki, kd);
     }
     
-    void updatePitchPID(double kp, double ki, double kd) {
-        pitch_pid->updateParams(kp, ki, kd);
-        ROS_INFO("俯仰角PID更新为: P=%.3f, I=%.3f, D=%.3f", kp, ki, kd);
-    }
-    
-    void updateYawPID(double kp, double ki, double kd) {
-        yaw_pid->updateParams(kp, ki, kd);
-        ROS_INFO("偏航角PID更新为: P=%.3f, I=%.3f, D=%.3f", kp, ki, kd);
+    void updateVisualYawPID(double kp, double ki, double kd) {
+        visual_yaw_pid->updateParams(kp, ki, kd);
+        ROS_INFO("视觉Yaw PID更新为: P=%.3f, I=%.3f, D=%.3f", kp, ki, kd);
     }
     
     void setTargetAltitude(double depth) {
         target_altitude = depth;
         altitude_pid->setPositionSetpoint(depth);
         ROS_INFO("目标深度设置为: %.2f 米", depth);
-    }
-    
-    void setTargetPitch(double pitch) {
-        target_pitch = normalizeAngle(pitch);
-        pitch_pid->setSetpoint(target_pitch);
-        ROS_INFO("目标俯仰角设置为: %.1f 度", target_pitch);
-    }
-    
-    void setTargetYaw(double yaw) {
-        target_yaw = normalizeAngle(yaw);
-        yaw_pid->setSetpoint(target_yaw);
-        ROS_INFO("目标偏航角设置为: %.1f 度", target_yaw);
-    }
-    
-    void resetYawZero() {
-        if (yaw_initialized) {
-            initial_yaw = current_yaw + initial_yaw;  // 将当前角度作为新的零点
-            target_yaw = 0.0;
-            yaw_pid->setSetpoint(0.0);
-            yaw_pid->reset();
-            ROS_INFO("偏航角零点已重置，当前角度设为新零点");
-        }
     }
     
     void setVerboseDebug(bool enable) {
@@ -809,8 +728,7 @@ public:
         double pos_kp, pos_ki, pos_kd;
         double vel_kp, vel_ki, vel_kd;
         double acc_kp, acc_ki, acc_kd;
-        double pitch_kp, pitch_ki, pitch_kd;
-        double yaw_kp, yaw_ki, yaw_kd;
+        double visual_yaw_kp, visual_yaw_ki, visual_yaw_kd;
         
         // 读取深度控制PID参数
         if (nh.getParam("position_pid/kp", pos_kp) &&
@@ -831,35 +749,18 @@ public:
             altitude_pid->updateAccelPID(acc_kp, acc_ki, acc_kd);
         }
         
-        // 读取俯仰角PID参数
-        if (nh.getParam("pitch_pid/kp", pitch_kp) &&
-            nh.getParam("pitch_pid/ki", pitch_ki) &&
-            nh.getParam("pitch_pid/kd", pitch_kd)) {
-            updatePitchPID(pitch_kp, pitch_ki, pitch_kd);
-        }
-        
-        // 读取偏航角PID参数
-        if (nh.getParam("yaw_pid/kp", yaw_kp) &&
-            nh.getParam("yaw_pid/ki", yaw_ki) &&
-            nh.getParam("yaw_pid/kd", yaw_kd)) {
-            updateYawPID(yaw_kp, yaw_ki, yaw_kd);
+        // 读取视觉Yaw PID参数
+        if (nh.getParam("visual_yaw_pid/kp", visual_yaw_kp) &&
+            nh.getParam("visual_yaw_pid/ki", visual_yaw_ki) &&
+            nh.getParam("visual_yaw_pid/kd", visual_yaw_kd)) {
+            updateVisualYawPID(visual_yaw_kp, visual_yaw_ki, visual_yaw_kd);
         }
         
         // 读取目标值
-        double new_target_altitude, new_target_pitch, new_target_yaw;
+        double new_target_altitude;
         if (nh.getParam("target_altitude", new_target_altitude) && 
             new_target_altitude != target_altitude) {
             setTargetAltitude(new_target_altitude);
-        }
-        
-        if (nh.getParam("target_pitch", new_target_pitch) && 
-            new_target_pitch != target_pitch) {
-            setTargetPitch(new_target_pitch);
-        }
-        
-        if (nh.getParam("target_yaw", new_target_yaw) && 
-            new_target_yaw != target_yaw) {
-            setTargetYaw(new_target_yaw);
         }
         
         // 读取控制模式
@@ -873,30 +774,24 @@ public:
         if (nh.getParam("debug_mode", debug_mode)) {
             setDebugMode(debug_mode);
         }
-        
-        // 检查是否需要重置yaw零点
-        bool reset_yaw;
-        if (nh.getParam("reset_yaw_zero", reset_yaw) && reset_yaw) {
-            resetYawZero();
-            // 重置参数避免重复执行
-            nh.setParam("reset_yaw_zero", false);
-        }
     }
     
     void stabilize() {
+        // 检查ArUco超时
+        if (aruco_detected && (ros::Time::now() - last_aruco_time).toSec() > aruco_timeout) {
+            aruco_detected = false;
+            ROS_WARN("ArUco检测超时，视觉控制暂停");
+        }
+        
         altitude_pid->setMeasurements(current_altitude, current_velocity_z, current_accel_z);
         
         double altitude_output = last_altitude_output;
-        double pitch_output = last_pitch_output;
-        double yaw_output = last_yaw_output;
+        double visual_yaw_output = last_visual_yaw_output;
         
         double altitude_error = target_altitude - current_altitude;
-        double pitch_error = normalizeAngle(target_pitch - current_pitch);
-        double yaw_error = normalizeAngle(target_yaw - current_yaw);
         
         bool in_altitude_deadzone = std::abs(altitude_error) <= altitude_deadzone;
-        bool in_pitch_deadzone = std::abs(pitch_error) <= pitch_deadzone;
-        bool in_yaw_deadzone = std::abs(yaw_error) <= yaw_deadzone;
+        bool in_visual_yaw_deadzone = aruco_detected ? (std::abs(pixel_error_x) <= visual_yaw_deadzone) : true;
         
         // PID计算逻辑
         bool should_calculate_pid = false;
@@ -909,8 +804,8 @@ public:
         
         // 深度控制计算
         if (should_calculate_pid && !in_altitude_deadzone && 
-            (control_mode == ControlMode::DEPTH_ONLY || control_mode == ControlMode::DEPTH_AND_PITCH ||
-             control_mode == ControlMode::DEPTH_AND_YAW || control_mode == ControlMode::ALL_CONTROL)) {
+            (control_mode == ControlMode::DEPTH_ONLY || control_mode == ControlMode::DEPTH_AND_YAW ||
+             control_mode == ControlMode::VISUAL_TRACKING)) {
             altitude_output = altitude_pid->compute();
             last_altitude_output = altitude_output;
             
@@ -923,55 +818,37 @@ public:
             if (!in_deadzone_last_time_altitude) {
                 // altitude_pid->resetIntegralOnly();
             }
-            // altitude_output = 0;
         }
         
-        // Pitch角控制计算
-        if (should_calculate_pid && !in_pitch_deadzone && 
-            (control_mode == ControlMode::PITCH_ONLY || control_mode == ControlMode::DEPTH_AND_PITCH ||
-             control_mode == ControlMode::PITCH_AND_YAW || control_mode == ControlMode::ALL_CONTROL)) {
-            pitch_output = pitch_pid->compute(current_pitch);
-            last_pitch_output = pitch_output;
-            
-            if (pitch_output > 0) {
-                pitch_output += pwm_deadzone;
-            } else if (pitch_output < 0) {
-                pitch_output -= pwm_deadzone;
-            }
-        } else if (in_pitch_deadzone) {
-            if (!in_deadzone_last_time_pitch) {
-                pitch_pid->resetIntegralOnly();
-            }
-            pitch_output = 0;
-        }
-        
-        // Yaw角控制计算
-        if (should_calculate_pid && !in_yaw_deadzone && 
+        // 视觉Yaw控制计算
+        if (should_calculate_pid && aruco_detected && !in_visual_yaw_deadzone && 
             (control_mode == ControlMode::YAW_ONLY || control_mode == ControlMode::DEPTH_AND_YAW ||
-             control_mode == ControlMode::PITCH_AND_YAW || control_mode == ControlMode::ALL_CONTROL)) {
-            yaw_output = yaw_pid->compute(current_yaw);
-            last_yaw_output = yaw_output;
+             control_mode == ControlMode::VISUAL_TRACKING)) {
+            // 使用像素误差X作为PID输入
+            visual_yaw_output = visual_yaw_pid->compute(pixel_error_x);
+            last_visual_yaw_output = visual_yaw_output;
             
-            if (yaw_output > 0) {
-                yaw_output += pwm_deadzone;
-            } else if (yaw_output < 0) {
-                yaw_output -= pwm_deadzone;
+            if (visual_yaw_output > 0) {
+                visual_yaw_output += pwm_deadzone;
+            } else if (visual_yaw_output < 0) {
+                visual_yaw_output -= pwm_deadzone;
             }
-        } else if (in_yaw_deadzone) {
-            if (!in_deadzone_last_time_yaw) {
-                // yaw_pid->resetIntegralOnly();
+        } else if (in_visual_yaw_deadzone || !aruco_detected) {
+            if (!in_deadzone_last_time_visual_yaw) {
+                // visual_yaw_pid->resetIntegralOnly();
             }
-            // yaw_output = 0;
+            if (!aruco_detected) {
+                visual_yaw_output = 0; // 没有检测到目标时停止yaw控制
+            }
         }
         
         in_deadzone_last_time_altitude = in_altitude_deadzone;
-        in_deadzone_last_time_pitch = in_pitch_deadzone;
-        in_deadzone_last_time_yaw = in_yaw_deadzone;
+        in_deadzone_last_time_visual_yaw = in_visual_yaw_deadzone;
         
         // 根据控制模式分配PWM值
-        // CH1: 右推进器, CH2: 左推进器 (Yaw控制)
-        // CH3: 前推进器, CH4: 后推进器 (深度+Pitch控制)
-        // Yaw控制逻辑：右转(yaw > 0)：右电机后推，左电机前推
+        // CH1: 右推进器, CH2: 左推进器 (视觉Yaw控制)
+        // CH3: 前推进器, CH4: 后推进器 (深度控制)
+        // 视觉Yaw控制逻辑：目标向右(pixel_error_x > 0)：右转
         switch (control_mode) {
             case ControlMode::DEPTH_ONLY:
                 // 只控制深度
@@ -981,53 +858,29 @@ public:
                 target_pwm_ch4 = base_throttle + altitude_output;
                 break;
                 
-            case ControlMode::PITCH_ONLY:
-                // 只控制Pitch
-                target_pwm_ch1 = base_throttle;
-                target_pwm_ch2 = base_throttle;
-                target_pwm_ch3 = base_throttle - pitch_output;   // 前推进器
-                target_pwm_ch4 = base_throttle + pitch_output;   // 后推进器
-                break;
-                
             case ControlMode::YAW_ONLY:
-                // 只控制Yaw
-                target_pwm_ch1 = base_throttle - yaw_output;     // 右推进器
-                target_pwm_ch2 = base_throttle + yaw_output;     // 左推进器
+                // 只控制视觉Yaw
+                target_pwm_ch1 = base_throttle + visual_yaw_output;   // 右推进器
+                target_pwm_ch2 = base_throttle - visual_yaw_output;   // 左推进器
                 target_pwm_ch3 = base_throttle;
                 target_pwm_ch4 = base_throttle;
                 break;
                 
-            case ControlMode::DEPTH_AND_PITCH:
-                // 深度+俯仰角控制
-                target_pwm_ch1 = base_throttle;
-                target_pwm_ch2 = base_throttle;
-                target_pwm_ch3 = base_throttle + altitude_output - pitch_output;   // 前推进器
-                target_pwm_ch4 = base_throttle + altitude_output + pitch_output;   // 后推进器
-                break;
-                
             case ControlMode::DEPTH_AND_YAW:
-                // 深度+偏航角控制
-                target_pwm_ch1 = base_throttle - yaw_output;     // 右推进器
-                target_pwm_ch2 = base_throttle + yaw_output;     // 左推进器
+                // 深度+视觉Yaw控制
+                target_pwm_ch1 = base_throttle + visual_yaw_output;   // 右推进器
+                target_pwm_ch2 = base_throttle - visual_yaw_output;   // 左推进器
                 target_pwm_ch3 = base_throttle + altitude_output;
                 target_pwm_ch4 = base_throttle + altitude_output;
                 break;
                 
-            case ControlMode::PITCH_AND_YAW:
-                // 俯仰角+偏航角控制
-                target_pwm_ch1 = base_throttle - yaw_output;     // 右推进器
-                target_pwm_ch2 = base_throttle + yaw_output;     // 左推进器
-                target_pwm_ch3 = base_throttle - pitch_output;   // 前推进器
-                target_pwm_ch4 = base_throttle + pitch_output;   // 后推进器
-                break;
-                
-            case ControlMode::ALL_CONTROL:
+            case ControlMode::VISUAL_TRACKING:
             default:
-                // 全控制模式：深度+俯仰角+偏航角
-                target_pwm_ch1 = base_throttle - yaw_output;                      // 右推进器
-                target_pwm_ch2 = base_throttle + yaw_output;                      // 左推进器
-                target_pwm_ch3 = base_throttle + altitude_output - pitch_output;  // 前推进器
-                target_pwm_ch4 = base_throttle + altitude_output + pitch_output;  // 后推进器
+                // 视觉跟踪模式：深度保持+视觉Yaw跟踪
+                target_pwm_ch1 = base_throttle + visual_yaw_output;   // 右推进器
+                target_pwm_ch2 = base_throttle - visual_yaw_output;   // 左推进器
+                target_pwm_ch3 = base_throttle + altitude_output;
+                target_pwm_ch4 = base_throttle + altitude_output;
                 break;
         }
         
@@ -1067,13 +920,9 @@ public:
         double alt_vel_out = altitude_pid->getVelocityOutput();
         double alt_acc_out = altitude_pid->getAccelOutput();
         
-        double pitch_p = pitch_pid->getLastPTerm();
-        double pitch_i = pitch_pid->getLastITerm();
-        double pitch_d = pitch_pid->getLastDTerm();
-        
-        double yaw_p = yaw_pid->getLastPTerm();
-        double yaw_i = yaw_pid->getLastITerm();
-        double yaw_d = yaw_pid->getLastDTerm();
+        double visual_yaw_p = visual_yaw_pid->getLastPTerm();
+        double visual_yaw_i = visual_yaw_pid->getLastITerm();
+        double visual_yaw_d = visual_yaw_pid->getLastDTerm();
         
         // 执行PWM平滑调整
         smoothPWMTransition();
@@ -1081,14 +930,13 @@ public:
         // 记录调试数据
         logData((int)control_mode, (int)debug_mode, 
                 current_altitude, altitude_error, current_velocity_z, current_accel_z,
-                current_pitch, pitch_error, current_pitch_rate,
-                current_yaw, yaw_error, current_yaw_rate,
+                current_pixel_x, current_pixel_y, pixel_error_x, pixel_error_y, aruco_detected,
                 alt_pos_setpoint, alt_vel_setpoint, alt_acc_setpoint,
-                target_pitch, last_pitch_output, target_yaw, last_yaw_output,
+                0.0, last_visual_yaw_output,
                 alt_pos_p, alt_pos_i, alt_pos_d,
                 alt_vel_p, alt_vel_i, alt_vel_d,
                 alt_acc_p, alt_acc_i, alt_acc_d,
-                pitch_p, pitch_i, pitch_d, yaw_p, yaw_i, yaw_d,
+                visual_yaw_p, visual_yaw_i, visual_yaw_d,
                 alt_pos_out, alt_vel_out, alt_acc_out, last_altitude_output,
                 current_pwm_ch1, current_pwm_ch2, current_pwm_ch3, current_pwm_ch4,
                 should_calculate_pid);
@@ -1101,30 +949,21 @@ public:
             debug_print_counter = 0;
             
             printf("\033[2J\033[H"); // 清屏
-            printf("\033[1;36m=== ROV 6DOF PID调试信息 ===\033[0m\n");
+            printf("\033[1;36m=== ROV 深度+视觉Yaw PID调试信息 ===\033[0m\n");
             
             printf("\033[1;33m控制模式: %d ", (int)control_mode);
             switch(control_mode) {
                 case ControlMode::DEPTH_ONLY:
                     printf("(仅深度控制)\033[0m\n");
                     break;
-                case ControlMode::PITCH_ONLY:
-                    printf("(仅俯仰角控制)\033[0m\n");
-                    break;
                 case ControlMode::YAW_ONLY:
-                    printf("(仅偏航角控制)\033[0m\n");
-                    break;
-                case ControlMode::DEPTH_AND_PITCH:
-                    printf("(深度+俯仰角控制)\033[0m\n");
+                    printf("(仅视觉Yaw控制)\033[0m\n");
                     break;
                 case ControlMode::DEPTH_AND_YAW:
-                    printf("(深度+偏航角控制)\033[0m\n");
+                    printf("(深度+视觉Yaw控制)\033[0m\n");
                     break;
-                case ControlMode::PITCH_AND_YAW:
-                    printf("(俯仰角+偏航角控制)\033[0m\n");
-                    break;
-                case ControlMode::ALL_CONTROL:
-                    printf("(全控制模式)\033[0m\n");
+                case ControlMode::VISUAL_TRACKING:
+                    printf("(视觉跟踪模式)\033[0m\n");
                     break;
             }
             
@@ -1146,18 +985,26 @@ public:
                    current_altitude, target_altitude, altitude_error);
             printf("  速度: %.4fm/s, 加速度: %.3fm/s²\n", 
                    current_velocity_z, current_accel_z);
-            printf("  俯仰角: %.1f°, 目标: %.1f°, 误差: %.1f°\n", 
-                   current_pitch, target_pitch, pitch_error);
-            printf("  俯仰角速率: %.2f°/s\n", current_pitch_rate);
-            printf("  偏航角: %.1f°, 目标: %.1f°, 误差: %.1f°\n", 
-                   current_yaw, target_yaw, yaw_error);
-            printf("  偏航角速率: %.2f°/s\n", current_yaw_rate);
+            
+            printf("\033[1;32m视觉状态:\033[0m\n");
+            if (aruco_detected) {
+                printf("  ArUco检测: \033[1;32m已检测\033[0m\n");
+                printf("  像素坐标: (%.1f, %.1f), 目标: (%.1f, %.1f)\n",
+                       current_pixel_x, current_pixel_y, target_pixel_x, target_pixel_y);
+                printf("  像素误差: X=%.1f, Y=%.1f\n", pixel_error_x, pixel_error_y);
+                
+                // 计算角度误差用于显示
+                double angle_error_x = atan(pixel_error_x / camera_fx) * 180.0 / M_PI;
+                double angle_error_y = atan(pixel_error_y / camera_fy) * 180.0 / M_PI;
+                printf("  角度误差: 水平=%.2f°, 垂直=%.2f°\n", angle_error_x, angle_error_y);
+            } else {
+                printf("  ArUco检测: \033[1;31m未检测到\033[0m\n");
+            }
             
             printf("\033[1;34m设定点:\033[0m\n");
             printf("  深度 - 位置: %.3fm, 速度: %.4fm/s, 加速度: %.3fm/s²\n", 
                    alt_pos_setpoint, alt_vel_setpoint, alt_acc_setpoint);
-            printf("  俯仰角设定点: %.1f°\n", target_pitch);
-            printf("  偏航角设定点: %.1f°\n", target_yaw);
+            printf("  视觉Yaw设定点: %.1f (像素误差为0)\n", 0.0);
             
             printf("\033[1;35mPWM控制状态:\033[0m\n");
             printf("  目标PWM - 右(CH1):%d, 左(CH2):%d, 前(CH3):%d, 后(CH4):%d\n", 
@@ -1176,16 +1023,13 @@ public:
                        alt_vel_p, alt_vel_i, alt_vel_d, alt_vel_out);
                 printf("  加速环 - P: %6.3f, I: %6.3f, D: %6.3f → 输出: %6.3f\n", 
                        alt_acc_p, alt_acc_i, alt_acc_d, alt_acc_out);
-                printf("\033[1;35m俯仰角PID分量:\033[0m\n");
-                printf("  俯仰环 - P: %6.3f, I: %6.3f, D: %6.3f → 输出: %6.3f\n", 
-                       pitch_p, pitch_i, pitch_d, last_pitch_output);
-                printf("\033[1;35m偏航角PID分量:\033[0m\n");
-                printf("  偏航环 - P: %6.3f, I: %6.3f, D: %6.3f → 输出: %6.3f\n", 
-                       yaw_p, yaw_i, yaw_d, last_yaw_output);
+                printf("\033[1;35m视觉Yaw PID分量:\033[0m\n");
+                printf("  视觉Yaw - P: %6.3f, I: %6.3f, D: %6.3f → 输出: %6.3f\n", 
+                       visual_yaw_p, visual_yaw_i, visual_yaw_d, last_visual_yaw_output);
             }
             
-            printf("\033[1;31m最终输出 - 深度: %.2f, 俯仰: %.2f, 偏航: %.2f\033[0m\n", 
-                   last_altitude_output, last_pitch_output, last_yaw_output);
+            printf("\033[1;31m最终输出 - 深度: %.2f, 视觉Yaw: %.2f\033[0m\n", 
+                   last_altitude_output, last_visual_yaw_output);
             
             printf("\033[1;37m按键提示: 可在另一个终端中使用rostopic或rosparam动态调整参数\033[0m\n");
             fflush(stdout);
@@ -1212,42 +1056,34 @@ public:
         smoothChannel(current_pwm_ch4, target_pwm_ch4);
     }
     
-    void runDebugDemo() {
+    void runVisualTrackingDemo() {
         if (!armVehicle()) {
             ROS_ERROR("飞控解锁失败，终止演示");
             return;
         }
         
-        ROS_INFO("=== ROV 6DOF PID调试模式演示开始 ===");
+        ROS_INFO("=== ROV 深度保持+视觉Yaw跟踪演示开始 ===");
         ROS_INFO("固定每%d个周期更新一次PID", pid_calculation_interval);
-        ROS_INFO("默认开启全控制模式(深度+俯仰角+偏航角)");
+        ROS_INFO("默认开启视觉跟踪模式(深度保持+视觉Yaw跟踪)");
+        ROS_INFO("订阅话题: /aruco_pixel 获取ArUco像素坐标");
         ROS_INFO("你可以通过以下命令实时调整参数:");
         ROS_INFO("深度控制:");
         ROS_INFO("  rosparam set /position_pid/kp 5.0");
         ROS_INFO("  rosparam set /velocity_pid/kp 10.0");
         ROS_INFO("  rosparam set /acceleration_pid/kp 0.8");
-        ROS_INFO("俯仰角控制:");
-        ROS_INFO("  rosparam set /pitch_pid/kp 2.5");
-        ROS_INFO("  rosparam set /pitch_pid/ki 0.1");
-        ROS_INFO("  rosparam set /pitch_pid/kd 0.8");
-        ROS_INFO("偏航角控制:");
-        ROS_INFO("  rosparam set /yaw_pid/kp 1.8");
-        ROS_INFO("  rosparam set /yaw_pid/ki 0.05");
-        ROS_INFO("  rosparam set /yaw_pid/kd 0.5");
+        ROS_INFO("视觉Yaw控制:");
+        ROS_INFO("  rosparam set /visual_yaw_pid/kp 2.0");
+        ROS_INFO("  rosparam set /visual_yaw_pid/ki 0.05");
+        ROS_INFO("  rosparam set /visual_yaw_pid/kd 0.8");
         ROS_INFO("目标设定:");
         ROS_INFO("  rosparam set /target_altitude 0.8");
-        ROS_INFO("  rosparam set /target_pitch 10.0");
-        ROS_INFO("  rosparam set /target_yaw 30.0");
         ROS_INFO("控制模式:");
-        ROS_INFO("  rosparam set /control_mode 7  # 1=仅深度, 2=仅俯仰, 3=仅偏航");
-        ROS_INFO("                                # 4=深度+俯仰, 5=深度+偏航, 6=俯仰+偏航, 7=全控制");
+        ROS_INFO("  rosparam set /control_mode 4  # 1=仅深度, 2=仅视觉Yaw, 3=深度+视觉Yaw, 4=视觉跟踪");
         ROS_INFO("  rosparam set /debug_mode 1    # 1=加速度环, 2=速度+加速度, 3=全三环");
-        ROS_INFO("偏航角零点重置:");
-        ROS_INFO("  rosparam set /reset_yaw_zero true  # 将当前角度设为新零点");
         
         // 从ROS参数获取控制模式
-        int ctrl_mode = 7;
-        nh.param("control_mode", ctrl_mode, 7);
+        int ctrl_mode = 4;
+        nh.param("control_mode", ctrl_mode, 4);
         setControlMode(ctrl_mode);
         
         int debug_mode = 3;
@@ -1278,7 +1114,7 @@ public:
             }
             
             controlMotors(1500, 1500, 1500, 1500);
-            ROS_INFO("调试控制终止");
+            ROS_INFO("视觉跟踪控制终止");
             
         } catch (ros::Exception& e) {
             ROS_ERROR("发生错误: %s", e.what());
@@ -1288,11 +1124,11 @@ public:
 
 int main(int argc, char **argv) {
     setlocale(LC_ALL,"");
-    ros::init(argc, argv, "enhanced_rov_pid_controller");
+    ros::init(argc, argv, "rov_visual_tracking_controller");
     
     try {
         FlightControllerInterface controller;
-        controller.runDebugDemo();
+        controller.runVisualTrackingDemo();
     } catch (ros::Exception& e) {
         ROS_ERROR("错误: %s", e.what());
     }

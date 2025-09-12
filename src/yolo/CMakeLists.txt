@@ -176,6 +176,10 @@ catkin_install_python(PROGRAMS
   scripts/deepth_logger.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
+catkin_install_python(PROGRAMS
+  scripts/cv_yolov.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 
 ## Mark executables for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_executables.html
