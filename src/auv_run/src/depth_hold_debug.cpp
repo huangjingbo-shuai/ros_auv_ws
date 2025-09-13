@@ -27,8 +27,7 @@ enum class PIDDebugMode {
 enum class ControlMode {
     DEPTH_ONLY = 1,           // 只控制深度
     YAW_ONLY = 2,             // 只控制偏航角
-    DEPTH_AND_YAW = 3,        // 控制深度和偏航角（视觉）
-    VISUAL_TRACKING = 4       // 视觉跟踪模式（深度保持+视觉Yaw）
+    DOCK_TRACKING = 3         // Dock跟踪模式（深度保持+前进+视觉Yaw）
 };
 
 class PIDController {
@@ -339,7 +338,7 @@ private:
     ros::Subscriber imu_sub;
     ros::Subscriber altitude_sub;
     ros::Subscriber velocity_sub;
-    ros::Subscriber aruco_pixel_sub;  // 新增：订阅ArUco像素坐标
+    ros::Subscriber yolo_pixel_sub;  // 订阅YOLO像素坐标
     ros::Rate* rate;
     
     // 深度控制PID
@@ -358,15 +357,19 @@ private:
     double target_altitude;
     
     // 视觉Yaw控制相关变量
-    double current_pixel_x;        // 当前ArUco中心像素X坐标
-    double current_pixel_y;        // 当前ArUco中心像素Y坐标
+    double current_pixel_x;        // 当前Dock中心像素X坐标
+    double current_pixel_y;        // 当前Dock中心像素Y坐标
     double target_pixel_x;         // 目标像素X坐标（相机中心）
     double target_pixel_y;         // 目标像素Y坐标（相机中心）
     double pixel_error_x;          // 像素误差X
     double pixel_error_y;          // 像素误差Y
-    bool aruco_detected;           // ArUco是否检测到
-    ros::Time last_aruco_time;     // 上次检测到ArUco的时间
-    double aruco_timeout;          // ArUco超时时间
+    double dock_confidence;        // YOLO检测置信度
+    bool dock_detected;           // Dock是否检测到
+    ros::Time last_dock_time;     // 上次检测到Dock的时间
+    double dock_timeout;          // Dock超时时间
+    
+    // 前进控制参数
+    double forward_thrust;         // Dock跟踪模式的前进推力
     
     // 相机参数
     double camera_cx;              // 相机光心X坐标
@@ -376,7 +379,7 @@ private:
     
     // PWM控制变量
     uint16_t base_throttle;
-    uint16_t current_pwm_ch1, current_pwm_ch2;  // CH1右推进器, CH2左推进器 (Yaw控制)
+    uint16_t current_pwm_ch1, current_pwm_ch2;  // CH1右推进器, CH2左推进器 (Yaw控制+前进)
     uint16_t current_pwm_ch3, current_pwm_ch4;  // CH3前推进器, CH4后推进器 (深度控制)
     uint16_t target_pwm_ch1, target_pwm_ch2;
     uint16_t target_pwm_ch3, target_pwm_ch4;
@@ -416,7 +419,7 @@ private:
         auto in_time_t = std::chrono::system_clock::to_time_t(now);
         
         std::stringstream ss;
-        ss << "rov_visual_debug_data_";
+        ss << "rov_dock_tracking_data_";
         ss << std::put_time(std::localtime(&in_time_t), "%Y%m%d_%H%M%S");
         ss << ".csv";
         
@@ -430,9 +433,9 @@ private:
             
             data_file << "timestamp,control_mode,debug_mode,"
                       << "altitude,altitude_error,velocity_z,accel_z,"
-                      << "pixel_x,pixel_y,pixel_error_x,pixel_error_y,aruco_detected,"
+                      << "pixel_x,pixel_y,pixel_error_x,pixel_error_y,dock_detected,dock_confidence,"
                       << "alt_pos_setpoint,alt_vel_setpoint,alt_acc_setpoint,"
-                      << "visual_yaw_setpoint,visual_yaw_output,"
+                      << "visual_yaw_setpoint,visual_yaw_output,forward_thrust,"
                       << "alt_pos_p,alt_pos_i,alt_pos_d,"
                       << "alt_vel_p,alt_vel_i,alt_vel_d,"
                       << "alt_acc_p,alt_acc_i,alt_acc_d,"
@@ -448,9 +451,10 @@ private:
     
     void logData(int control_mode, int debug_mode, 
                 double altitude, double altitude_error, double velocity_z, double accel_z,
-                double pixel_x, double pixel_y, double pixel_error_x, double pixel_error_y, bool aruco_detected,
+                double pixel_x, double pixel_y, double pixel_error_x, double pixel_error_y, 
+                bool dock_detected, double dock_confidence,
                 double alt_pos_setpoint, double alt_vel_setpoint, double alt_acc_setpoint,
-                double visual_yaw_setpoint, double visual_yaw_output,
+                double visual_yaw_setpoint, double visual_yaw_output, double forward_thrust,
                 double alt_pos_p, double alt_pos_i, double alt_pos_d,
                 double alt_vel_p, double alt_vel_i, double alt_vel_d,
                 double alt_acc_p, double alt_acc_i, double alt_acc_d,
@@ -465,9 +469,10 @@ private:
                      << elapsed << ","
                      << control_mode << "," << debug_mode << ","
                      << altitude << "," << altitude_error << "," << velocity_z << "," << accel_z << ","
-                     << pixel_x << "," << pixel_y << "," << pixel_error_x << "," << pixel_error_y << "," << (aruco_detected ? 1 : 0) << ","
+                     << pixel_x << "," << pixel_y << "," << pixel_error_x << "," << pixel_error_y << "," 
+                     << (dock_detected ? 1 : 0) << "," << dock_confidence << ","
                      << alt_pos_setpoint << "," << alt_vel_setpoint << "," << alt_acc_setpoint << ","
-                     << visual_yaw_setpoint << "," << visual_yaw_output << ","
+                     << visual_yaw_setpoint << "," << visual_yaw_output << "," << forward_thrust << ","
                      << alt_pos_p << "," << alt_pos_i << "," << alt_pos_d << ","
                      << alt_vel_p << "," << alt_vel_i << "," << alt_vel_d << ","
                      << alt_acc_p << "," << alt_acc_i << "," << alt_acc_d << ","
@@ -501,9 +506,10 @@ private:
 
 public:
     FlightControllerInterface() : 
-        current_altitude(0.0), current_velocity_z(0.0), current_accel_z(0.0), target_altitude(0.5),
+        current_altitude(0.0), current_velocity_z(0.0), current_accel_z(0.0), target_altitude(0.6),
         current_pixel_x(0.0), current_pixel_y(0.0), target_pixel_x(318.509118), target_pixel_y(247.737583),
-        pixel_error_x(0.0), pixel_error_y(0.0), aruco_detected(false), aruco_timeout(2.0),
+        pixel_error_x(0.0), pixel_error_y(0.0), dock_confidence(0.0), dock_detected(false), dock_timeout(2.0),
+        forward_thrust(100.0),  // 默认前进推力
         camera_cx(318.509118), camera_cy(247.737583), camera_fx(410.971988), camera_fy(412.393625),
         base_throttle(1500), logging_enabled(true),
         current_pwm_ch1(1500), current_pwm_ch2(1500), current_pwm_ch3(1500), current_pwm_ch4(1500),
@@ -515,8 +521,8 @@ public:
         altitude_deadzone(0.02), visual_yaw_deadzone(10.0), pwm_deadzone(30),
         pid_calculation_enabled(true), pid_calculation_interval(5), 
         pid_calculation_counter(0), last_altitude_output(0.0), last_visual_yaw_output(0.0),
-        debug_print_counter(0), verbose_debug(false),
-        control_mode(ControlMode::VISUAL_TRACKING) {
+        debug_print_counter(0), verbose_debug(true),
+        control_mode(ControlMode::DOCK_TRACKING) {
         
         rc_pub = nh.advertise<mavros_msgs::OverrideRCIn>("/mavros/rc/override", 100);
         
@@ -531,42 +537,45 @@ public:
         velocity_sub = nh.subscribe("/mavros/global_position/local", 100,
                                    &FlightControllerInterface::odometryCallback, this);
         
-        // 订阅ArUco像素坐标
-        aruco_pixel_sub = nh.subscribe("/aruco_pixel", 10, 
-                                      &FlightControllerInterface::arucoPixelCallback, this);
+        // 订阅YOLO Dock像素坐标
+        yolo_pixel_sub = nh.subscribe("/yolo_pixel", 10, 
+                                     &FlightControllerInterface::yoloPixelCallback, this);
 
         rate = new ros::Rate(100);
         
-        // 从ROS参数服务器读取PID参数
+        // 从ROS参数服务器读取PID参数，使用配置文件中的默认值
         double pos_kp, pos_ki, pos_kd;
         double vel_kp, vel_ki, vel_kd;
         double acc_kp, acc_ki, acc_kd;
         double visual_yaw_kp, visual_yaw_ki, visual_yaw_kd;
         
-        // 深度控制PID参数
-        nh.param("position_pid/kp", pos_kp, 3.0);
+        // 深度控制PID参数 - 使用配置文件值
+        nh.param("position_pid/kp", pos_kp, 20.0);
         nh.param("position_pid/ki", pos_ki, 0.0);
         nh.param("position_pid/kd", pos_kd, 0.0);
         
-        nh.param("velocity_pid/kp", vel_kp, 8.0);
+        nh.param("velocity_pid/kp", vel_kp, 10.0);
         nh.param("velocity_pid/ki", vel_ki, 0.0);
         nh.param("velocity_pid/kd", vel_kd, 0.0);
         
-        nh.param("acceleration_pid/kp", acc_kp, 0.5);
-        nh.param("acceleration_pid/ki", acc_ki, 0.1);
-        nh.param("acceleration_pid/kd", acc_kd, 0.5);
+        nh.param("acceleration_pid/kp", acc_kp, 0.8);
+        nh.param("acceleration_pid/ki", acc_ki, 0.03);
+        nh.param("acceleration_pid/kd", acc_kd, 0.8);
         
         // 视觉Yaw控制PID参数
         nh.param("visual_yaw_pid/kp", visual_yaw_kp, 2.0);
         nh.param("visual_yaw_pid/ki", visual_yaw_ki, 0.05);
         nh.param("visual_yaw_pid/kd", visual_yaw_kd, 0.8);
         
-        // 目标值
-        nh.param("target_altitude", target_altitude, 0.5);
+        // 目标值 - 使用配置文件值
+        nh.param("target_altitude", target_altitude, 0.6);
+        
+        // 前进推力
+        nh.param("forward_thrust", forward_thrust, 100.0);
         
         // 控制模式
         int mode;
-        nh.param("control_mode", mode, 4);
+        nh.param("control_mode", mode, 3);
         control_mode = static_cast<ControlMode>(mode);
         
         // PWM平滑参数
@@ -577,6 +586,9 @@ public:
         // 死区参数
         nh.param("altitude_deadzone", altitude_deadzone, 0.02);
         nh.param("visual_yaw_deadzone", visual_yaw_deadzone, 10.0);
+        
+        // 调试输出设置 - 使用配置文件值
+        nh.param("verbose_debug", verbose_debug, true);
         
         // 相机参数
         nh.param("camera_cx", camera_cx, 318.509118);
@@ -593,7 +605,9 @@ public:
         ROS_INFO("深度控制 - 加速度环PID: P=%.3f, I=%.3f, D=%.3f", acc_kp, acc_ki, acc_kd);
         ROS_INFO("视觉Yaw控制PID: P=%.3f, I=%.3f, D=%.3f", visual_yaw_kp, visual_yaw_ki, visual_yaw_kd);
         ROS_INFO("目标深度: %.2f 米", target_altitude);
-        ROS_INFO("控制模式: %d (1=仅深度, 2=仅视觉Yaw, 3=深度+视觉Yaw, 4=视觉跟踪)", (int)control_mode);
+        ROS_INFO("前进推力: %.1f", forward_thrust);
+        ROS_INFO("控制模式: %d (1=仅深度, 2=仅视觉Yaw, 3=Dock跟踪)", (int)control_mode);
+        ROS_INFO("详细调试输出: %s", verbose_debug ? "开启" : "关闭");
         ROS_INFO("相机参数: 光心(%.1f, %.1f), 焦距(%.1f, %.1f)", camera_cx, camera_cy, camera_fx, camera_fy);
         
         // 初始化PID控制器
@@ -613,6 +627,18 @@ public:
         
         altitude_pid->setFilterCoefficients(0.2, 0.3);
         visual_yaw_pid->setIntegralLimit(100.0);
+        
+        // 设置手动设定点（如果启用）
+        bool manual_enable;
+        double manual_vel, manual_accel;
+        nh.param("manual_setpoints/enable", manual_enable, true);
+        nh.param("manual_setpoints/velocity", manual_vel, 0.13);
+        nh.param("manual_setpoints/acceleration", manual_accel, 1.0);
+        
+        if (manual_enable) {
+            altitude_pid->setManualSetpoints(manual_vel, manual_accel, true);
+            ROS_INFO("手动设定点已启用 - 速度: %.3f m/s, 加速度: %.2f m/s²", manual_vel, manual_accel);
+        }
         
         initDataLogging();
     }
@@ -641,19 +667,21 @@ public:
         current_velocity_z = msg->twist.twist.linear.z;
     }
     
-    void arucoPixelCallback(const geometry_msgs::Point::ConstPtr& msg) {
+    // YOLO Dock像素坐标回调函数
+    void yoloPixelCallback(const geometry_msgs::Point::ConstPtr& msg) {
         current_pixel_x = msg->x;
         current_pixel_y = msg->y;
+        dock_confidence = msg->z;  // YOLO检测置信度
         
         // 计算像素误差
         pixel_error_x = current_pixel_x - target_pixel_x;
         pixel_error_y = current_pixel_y - target_pixel_y;
         
-        aruco_detected = true;
-        last_aruco_time = ros::Time::now();
+        dock_detected = true;
+        last_dock_time = ros::Time::now();
         
-        ROS_DEBUG("ArUco检测到: 像素(%.1f, %.1f), 误差(%.1f, %.1f)", 
-                  current_pixel_x, current_pixel_y, pixel_error_x, pixel_error_y);
+        ROS_DEBUG("Dock检测到: 像素(%.1f, %.1f), 置信度: %.3f, 误差(%.1f, %.1f)", 
+                  current_pixel_x, current_pixel_y, dock_confidence, pixel_error_x, pixel_error_y);
     }
     
     bool armVehicle() {
@@ -677,8 +705,8 @@ public:
             msg.channels[i] = 65535;
         }
         
-        msg.channels[0] = throttle_ch1;  // CH1: 右推进器 (用于Yaw控制)
-        msg.channels[1] = throttle_ch2;  // CH2: 左推进器 (用于Yaw控制)
+        msg.channels[0] = throttle_ch1;  // CH1: 右推进器 (用于Yaw控制+前进)
+        msg.channels[1] = throttle_ch2;  // CH2: 左推进器 (用于Yaw控制+前进)
         msg.channels[2] = throttle_ch3;  // CH3: 前推进器 (用于深度控制)
         msg.channels[3] = throttle_ch4;  // CH4: 后推进器 (用于深度控制)
         
@@ -688,7 +716,7 @@ public:
     // 设置控制模式
     void setControlMode(int mode) {
         control_mode = static_cast<ControlMode>(mode);
-        ROS_INFO("控制模式设置为: %d (1=仅深度, 2=仅视觉Yaw, 3=深度+视觉Yaw, 4=视觉跟踪)", mode);
+        ROS_INFO("控制模式设置为: %d (1=仅深度, 2=仅视觉Yaw, 3=Dock跟踪)", mode);
     }
     
     // PID调试接口函数
@@ -721,6 +749,11 @@ public:
     
     void setVerboseDebug(bool enable) {
         verbose_debug = enable;
+    }
+    
+    void setForwardThrust(double thrust) {
+        forward_thrust = thrust;
+        ROS_INFO("前进推力设置为: %.1f", thrust);
     }
     
     // 动态更新PID参数（从ROS参数服务器读取）
@@ -763,6 +796,13 @@ public:
             setTargetAltitude(new_target_altitude);
         }
         
+        // 读取前进推力
+        double new_forward_thrust;
+        if (nh.getParam("forward_thrust", new_forward_thrust) && 
+            new_forward_thrust != forward_thrust) {
+            setForwardThrust(new_forward_thrust);
+        }
+        
         // 读取控制模式
         int mode;
         if (nh.getParam("control_mode", mode)) {
@@ -774,13 +814,22 @@ public:
         if (nh.getParam("debug_mode", debug_mode)) {
             setDebugMode(debug_mode);
         }
+        
+        // 读取手动设定点
+        bool manual_enable;
+        double manual_vel, manual_accel;
+        if (nh.getParam("manual_setpoints/enable", manual_enable) &&
+            nh.getParam("manual_setpoints/velocity", manual_vel) &&
+            nh.getParam("manual_setpoints/acceleration", manual_accel)) {
+            altitude_pid->setManualSetpoints(manual_vel, manual_accel, manual_enable);
+        }
     }
     
     void stabilize() {
-        // 检查ArUco超时
-        if (aruco_detected && (ros::Time::now() - last_aruco_time).toSec() > aruco_timeout) {
-            aruco_detected = false;
-            ROS_WARN("ArUco检测超时，视觉控制暂停");
+        // 检查Dock超时
+        if (dock_detected && (ros::Time::now() - last_dock_time).toSec() > dock_timeout) {
+            dock_detected = false;
+            ROS_WARN("Dock检测超时，视觉控制暂停");
         }
         
         altitude_pid->setMeasurements(current_altitude, current_velocity_z, current_accel_z);
@@ -791,7 +840,7 @@ public:
         double altitude_error = target_altitude - current_altitude;
         
         bool in_altitude_deadzone = std::abs(altitude_error) <= altitude_deadzone;
-        bool in_visual_yaw_deadzone = aruco_detected ? (std::abs(pixel_error_x) <= visual_yaw_deadzone) : true;
+        bool in_visual_yaw_deadzone = dock_detected ? (std::abs(pixel_error_x) <= visual_yaw_deadzone) : true;
         
         // PID计算逻辑
         bool should_calculate_pid = false;
@@ -804,8 +853,7 @@ public:
         
         // 深度控制计算
         if (should_calculate_pid && !in_altitude_deadzone && 
-            (control_mode == ControlMode::DEPTH_ONLY || control_mode == ControlMode::DEPTH_AND_YAW ||
-             control_mode == ControlMode::VISUAL_TRACKING)) {
+            (control_mode == ControlMode::DEPTH_ONLY || control_mode == ControlMode::DOCK_TRACKING)) {
             altitude_output = altitude_pid->compute();
             last_altitude_output = altitude_output;
             
@@ -821,9 +869,8 @@ public:
         }
         
         // 视觉Yaw控制计算
-        if (should_calculate_pid && aruco_detected && !in_visual_yaw_deadzone && 
-            (control_mode == ControlMode::YAW_ONLY || control_mode == ControlMode::DEPTH_AND_YAW ||
-             control_mode == ControlMode::VISUAL_TRACKING)) {
+        if (should_calculate_pid && dock_detected && !in_visual_yaw_deadzone && 
+            (control_mode == ControlMode::YAW_ONLY || control_mode == ControlMode::DOCK_TRACKING)) {
             // 使用像素误差X作为PID输入
             visual_yaw_output = visual_yaw_pid->compute(pixel_error_x);
             last_visual_yaw_output = visual_yaw_output;
@@ -833,11 +880,11 @@ public:
             } else if (visual_yaw_output < 0) {
                 visual_yaw_output -= pwm_deadzone;
             }
-        } else if (in_visual_yaw_deadzone || !aruco_detected) {
+        } else if (in_visual_yaw_deadzone || !dock_detected) {
             if (!in_deadzone_last_time_visual_yaw) {
                 // visual_yaw_pid->resetIntegralOnly();
             }
-            if (!aruco_detected) {
+            if (!dock_detected) {
                 visual_yaw_output = 0; // 没有检测到目标时停止yaw控制
             }
         }
@@ -846,9 +893,8 @@ public:
         in_deadzone_last_time_visual_yaw = in_visual_yaw_deadzone;
         
         // 根据控制模式分配PWM值
-        // CH1: 右推进器, CH2: 左推进器 (视觉Yaw控制)
+        // CH1: 右推进器, CH2: 左推进器 (视觉Yaw控制+前进)
         // CH3: 前推进器, CH4: 后推进器 (深度控制)
-        // 视觉Yaw控制逻辑：目标向右(pixel_error_x > 0)：右转
         switch (control_mode) {
             case ControlMode::DEPTH_ONLY:
                 // 只控制深度
@@ -866,21 +912,13 @@ public:
                 target_pwm_ch4 = base_throttle;
                 break;
                 
-            case ControlMode::DEPTH_AND_YAW:
-                // 深度+视觉Yaw控制
-                target_pwm_ch1 = base_throttle + visual_yaw_output;   // 右推进器
-                target_pwm_ch2 = base_throttle - visual_yaw_output;   // 左推进器
-                target_pwm_ch3 = base_throttle + altitude_output;
-                target_pwm_ch4 = base_throttle + altitude_output;
-                break;
-                
-            case ControlMode::VISUAL_TRACKING:
+            case ControlMode::DOCK_TRACKING:
             default:
-                // 视觉跟踪模式：深度保持+视觉Yaw跟踪
-                target_pwm_ch1 = base_throttle + visual_yaw_output;   // 右推进器
-                target_pwm_ch2 = base_throttle - visual_yaw_output;   // 左推进器
-                target_pwm_ch3 = base_throttle + altitude_output;
-                target_pwm_ch4 = base_throttle + altitude_output;
+                // Dock跟踪模式：深度保持+前进+视觉Yaw跟踪
+                target_pwm_ch1 = base_throttle + forward_thrust + visual_yaw_output;   // 右推进器: 前进+yaw
+                target_pwm_ch2 = base_throttle + forward_thrust - visual_yaw_output;   // 左推进器: 前进+yaw
+                target_pwm_ch3 = base_throttle + altitude_output;    // 垂直推进器: 深度控制
+                target_pwm_ch4 = base_throttle + altitude_output;    // 垂直推进器: 深度控制
                 break;
         }
         
@@ -930,9 +968,10 @@ public:
         // 记录调试数据
         logData((int)control_mode, (int)debug_mode, 
                 current_altitude, altitude_error, current_velocity_z, current_accel_z,
-                current_pixel_x, current_pixel_y, pixel_error_x, pixel_error_y, aruco_detected,
+                current_pixel_x, current_pixel_y, pixel_error_x, pixel_error_y, 
+                dock_detected, dock_confidence,
                 alt_pos_setpoint, alt_vel_setpoint, alt_acc_setpoint,
-                0.0, last_visual_yaw_output,
+                0.0, last_visual_yaw_output, forward_thrust,
                 alt_pos_p, alt_pos_i, alt_pos_d,
                 alt_vel_p, alt_vel_i, alt_vel_d,
                 alt_acc_p, alt_acc_i, alt_acc_d,
@@ -949,7 +988,7 @@ public:
             debug_print_counter = 0;
             
             printf("\033[2J\033[H"); // 清屏
-            printf("\033[1;36m=== ROV 深度+视觉Yaw PID调试信息 ===\033[0m\n");
+            printf("\033[1;36m=== ROV Dock跟踪 PID调试信息 ===\033[0m\n");
             
             printf("\033[1;33m控制模式: %d ", (int)control_mode);
             switch(control_mode) {
@@ -959,11 +998,8 @@ public:
                 case ControlMode::YAW_ONLY:
                     printf("(仅视觉Yaw控制)\033[0m\n");
                     break;
-                case ControlMode::DEPTH_AND_YAW:
-                    printf("(深度+视觉Yaw控制)\033[0m\n");
-                    break;
-                case ControlMode::VISUAL_TRACKING:
-                    printf("(视觉跟踪模式)\033[0m\n");
+                case ControlMode::DOCK_TRACKING:
+                    printf("(Dock跟踪模式: 深度+前进+Yaw)\033[0m\n");
                     break;
             }
             
@@ -986,20 +1022,26 @@ public:
             printf("  速度: %.4fm/s, 加速度: %.3fm/s²\n", 
                    current_velocity_z, current_accel_z);
             
-            printf("\033[1;32m视觉状态:\033[0m\n");
-            if (aruco_detected) {
-                printf("  ArUco检测: \033[1;32m已检测\033[0m\n");
+            printf("\033[1;32mDock检测状态:\033[0m\n");
+            if (dock_detected) {
+                printf("  YOLO检测: \033[1;32mDock已检测到\033[0m\n");
                 printf("  像素坐标: (%.1f, %.1f), 目标: (%.1f, %.1f)\n",
                        current_pixel_x, current_pixel_y, target_pixel_x, target_pixel_y);
                 printf("  像素误差: X=%.1f, Y=%.1f\n", pixel_error_x, pixel_error_y);
+                printf("  检测置信度: %.3f\n", dock_confidence);
                 
                 // 计算角度误差用于显示
                 double angle_error_x = atan(pixel_error_x / camera_fx) * 180.0 / M_PI;
                 double angle_error_y = atan(pixel_error_y / camera_fy) * 180.0 / M_PI;
                 printf("  角度误差: 水平=%.2f°, 垂直=%.2f°\n", angle_error_x, angle_error_y);
             } else {
-                printf("  ArUco检测: \033[1;31m未检测到\033[0m\n");
+                printf("  YOLO检测: \033[1;31mDock未检测到\033[0m\n");
             }
+            
+            printf("\033[1;34m控制输出:\033[0m\n");
+            printf("  前进推力: %.1f\n", forward_thrust);
+            printf("  深度控制输出: %.2f\n", last_altitude_output);
+            printf("  视觉Yaw输出: %.2f\n", last_visual_yaw_output);
             
             printf("\033[1;34m设定点:\033[0m\n");
             printf("  深度 - 位置: %.3fm, 速度: %.4fm/s, 加速度: %.3fm/s²\n", 
@@ -1028,9 +1070,6 @@ public:
                        visual_yaw_p, visual_yaw_i, visual_yaw_d, last_visual_yaw_output);
             }
             
-            printf("\033[1;31m最终输出 - 深度: %.2f, 视觉Yaw: %.2f\033[0m\n", 
-                   last_altitude_output, last_visual_yaw_output);
-            
             printf("\033[1;37m按键提示: 可在另一个终端中使用rostopic或rosparam动态调整参数\033[0m\n");
             fflush(stdout);
         }
@@ -1056,43 +1095,41 @@ public:
         smoothChannel(current_pwm_ch4, target_pwm_ch4);
     }
     
-    void runVisualTrackingDemo() {
+    void runDockTrackingDemo() {
         if (!armVehicle()) {
             ROS_ERROR("飞控解锁失败，终止演示");
             return;
         }
         
-        ROS_INFO("=== ROV 深度保持+视觉Yaw跟踪演示开始 ===");
+        ROS_INFO("=== ROV Dock跟踪演示开始 ===");
         ROS_INFO("固定每%d个周期更新一次PID", pid_calculation_interval);
-        ROS_INFO("默认开启视觉跟踪模式(深度保持+视觉Yaw跟踪)");
-        ROS_INFO("订阅话题: /aruco_pixel 获取ArUco像素坐标");
+        ROS_INFO("默认开启Dock跟踪模式(深度保持+前进+视觉Yaw跟踪)");
+        ROS_INFO("订阅话题: /yolo_pixel 获取YOLO Dock像素坐标");
         ROS_INFO("你可以通过以下命令实时调整参数:");
         ROS_INFO("深度控制:");
-        ROS_INFO("  rosparam set /position_pid/kp 5.0");
+        ROS_INFO("  rosparam set /position_pid/kp 20.0");
         ROS_INFO("  rosparam set /velocity_pid/kp 10.0");
         ROS_INFO("  rosparam set /acceleration_pid/kp 0.8");
         ROS_INFO("视觉Yaw控制:");
         ROS_INFO("  rosparam set /visual_yaw_pid/kp 2.0");
         ROS_INFO("  rosparam set /visual_yaw_pid/ki 0.05");
         ROS_INFO("  rosparam set /visual_yaw_pid/kd 0.8");
+        ROS_INFO("前进控制:");
+        ROS_INFO("  rosparam set /forward_thrust 120.0");
         ROS_INFO("目标设定:");
         ROS_INFO("  rosparam set /target_altitude 0.8");
         ROS_INFO("控制模式:");
-        ROS_INFO("  rosparam set /control_mode 4  # 1=仅深度, 2=仅视觉Yaw, 3=深度+视觉Yaw, 4=视觉跟踪");
+        ROS_INFO("  rosparam set /control_mode 3  # 1=仅深度, 2=仅视觉Yaw, 3=Dock跟踪");
         ROS_INFO("  rosparam set /debug_mode 1    # 1=加速度环, 2=速度+加速度, 3=全三环");
         
         // 从ROS参数获取控制模式
-        int ctrl_mode = 4;
-        nh.param("control_mode", ctrl_mode, 4);
+        int ctrl_mode = 3;
+        nh.param("control_mode", ctrl_mode, 3);
         setControlMode(ctrl_mode);
         
         int debug_mode = 3;
         nh.param("debug_mode", debug_mode, 3);
         setDebugMode(debug_mode);
-        
-        bool verbose = false;
-        nh.param("verbose_debug", verbose, false);
-        setVerboseDebug(verbose);
         
         // 参数更新计数器
         int param_update_counter = 0;
@@ -1114,7 +1151,7 @@ public:
             }
             
             controlMotors(1500, 1500, 1500, 1500);
-            ROS_INFO("视觉跟踪控制终止");
+            ROS_INFO("Dock跟踪控制终止");
             
         } catch (ros::Exception& e) {
             ROS_ERROR("发生错误: %s", e.what());
@@ -1124,11 +1161,11 @@ public:
 
 int main(int argc, char **argv) {
     setlocale(LC_ALL,"");
-    ros::init(argc, argv, "rov_visual_tracking_controller");
+    ros::init(argc, argv, "rov_dock_tracking_controller");
     
     try {
         FlightControllerInterface controller;
-        controller.runVisualTrackingDemo();
+        controller.runDockTrackingDemo();
     } catch (ros::Exception& e) {
         ROS_ERROR("错误: %s", e.what());
     }

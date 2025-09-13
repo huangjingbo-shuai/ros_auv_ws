@@ -189,7 +189,7 @@ private:
                 break;
                 
             case MOVE_SERVO2_TO_UP:
-                servo2_angle_ = 60.0; // 垂直向上60度
+                servo2_angle_ = 40.0; // 垂直向上60度
                 
                 // 立即切换，不等待 - 先确保状态机工作
                 ROS_INFO("Servo2 moved to 60 degrees, starting search immediately...");

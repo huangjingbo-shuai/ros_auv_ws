@@ -1,114 +1,101 @@
-# ROV 深度保持 + 视觉Yaw跟踪 PID参数配置文件
+# ROV Dock跟踪 PID参数配置文件
 # 使用方法: rosparam load this_file.yaml
 
 # ============ 控制模式设置 ============
 # 控制模式：
 # 1 = 仅深度控制
 # 2 = 仅视觉Yaw控制  
-# 3 = 深度+视觉Yaw控制
-# 4 = 视觉跟踪模式（推荐）
-control_mode: 1
+# 3 = Dock跟踪模式（深度保持+前进+视觉Yaw跟踪）
+control_mode: 3
 
 # 深度控制调试模式：
 # 1 = 只调试加速度环（内环）
 # 2 = 调试速度环+加速度环（中环+内环）  
-# 3 = 全三环级联调试（推荐）
+# 3 = 全三环级联调试
 debug_mode: 3
 
 # ============ 目标设定 ============
-# 目标深度（米，负值表示水下）
-target_altitude: 0.5
+# 目标深度（米）
+target_altitude: 0.6
+
+# 前进推力（用于Dock跟踪模式）
+forward_thrust: 30.0
 
 # ============ 深度控制PID参数 ============
 # 位置环PID参数（深度外环）
 position_pid:
-  kp: 15.0       # 位置比例增益
-  ki: 0.0       # 位置积分增益
-  kd: 0.0       # 位置微分增益
+  kp: 15.0
+  ki: 0.0
+  kd: 0.0
 
 # 速度环PID参数（深度中环）
 velocity_pid:
-  kp: 15.0       # 速度比例增益
-  ki: 0.0       # 速度积分增益
-  kd: 0.0       # 速度微分增益
+  kp: 15.0
+  ki: 0.0
+  kd: 0.0
 
 # 加速度环PID参数（深度内环）
 acceleration_pid:
-  kp: 2       # 加速度比例增益
-  ki: 0.1       # 加速度积分增益
-  kd: 0.8       # 加速度微分增益
+  kp: 2
+  ki: 0.1
+  kd: 0.8
 
 # ============ 视觉Yaw控制PID参数 ============
-# 视觉Yaw PID参数（基于像素误差的单环控制）
+# 基于像素误差的Yaw控制
 visual_yaw_pid:
-  kp: 0.004       # 比例增益
-  ki: 0.05      # 积分增益
-  kd: 0.8       # 微分增益
+  kp: 0.004
+  ki: 0.05
+  kd: 0.8
+
+# ============ 手动设定点（用于PID调试）============
+manual_setpoints:
+  enable: true
+  velocity: 0.13        # 速度设定点 (m/s)
+  acceleration: 1.0     # 加速度设定点 (m/s²)
 
 # ============ 相机参数 ============
-# 相机标定参数（根据实际相机调整）
-camera_cx: 318.509118     # 相机光心X坐标
-camera_cy: 247.737583     # 相机光心Y坐标
-camera_fx: 410.971988     # X方向焦距
-camera_fy: 412.393625     # Y方向焦距
+camera_cx: 318.509118
+camera_cy: 247.737583
+camera_fx: 410.971988
+camera_fy: 412.393625
 
-# ============ 死区和滤波参数 ============
-# 控制死区设置
+# ============ 控制参数 ============
+# 控制死区
 altitude_deadzone: 0.02       # 深度死区（米）
 visual_yaw_deadzone: 10.0     # 视觉Yaw死区（像素）
 
-# ============ PWM控制参数 ============
-# PWM平滑控制参数
-pwm_base_change_rate: 3.0     # 基础PWM变化速率
-pwm_max_change_rate: 15.0     # 最大PWM变化速率
-pid_calculation_interval: 5   # PID计算间隔（控制周期数）
-
-# 基础油门值
+# PWM控制
 base_throttle: 1500
-
-# PWM死区补偿
 pwm_deadzone: 30
+pwm_base_change_rate: 3.0
+pwm_max_change_rate: 15.0
+pid_calculation_interval: 5
 
-# ============ 调试输出设置 ============
-verbose_debug: true           # 是否显示详细的PID分量信息
+# ============ 调试输出 ============
+verbose_debug: true
 
-# ============ 电机通道映射 ============
-# CH1: 右推进器（视觉Yaw控制）
-# CH2: 左推进器（视觉Yaw控制）
-# CH3: 前推进器（深度控制）
-# CH4: 后推进器（深度控制）
+# ============ 实时调整命令参考 ============
+# 深度控制:
+#   rosparam set /position_pid/kp 25.0
+#   rosparam set /acceleration_pid/ki 0.05
+# 
+# 视觉控制:
+#   rosparam set /visual_yaw_pid/kp 2.5
 #
-# 控制逻辑：
-# 深度控制: CH3和CH4同时增减PWM
-# 视觉Yaw控制: CH1和CH2差分控制
-#   - 目标向右: CH1增加推力，CH2减少推力
-#   - 目标向左: CH1减少推力，CH2增加推力
+# 前进推力:
+#   rosparam set /forward_thrust 120.0
+#
+# 模式切换:
+#   rosparam set /control_mode 1    # 仅深度控制
+#   rosparam set /debug_mode 1      # 仅调试加速度环
 
-# ============ 参数调试建议 ============
-# 1. 调试顺序：
-#    - 先单独调试深度控制（control_mode: 1）
-#    - 从加速度环开始（debug_mode: 1）
-#    - 再调试视觉Yaw控制（control_mode: 2）
-#    - 最后联合调试（control_mode: 4）
-
-# 2. 实时调整命令：
-#    深度控制:
-#    rosparam set /position_pid/kp 5.0
-#    rosparam set /velocity_pid/kp 10.0
-#    rosparam set /acceleration_pid/kp 0.8
-#    
-#    视觉Yaw控制:
-#    rosparam set /visual_yaw_pid/kp 2.5
-#    rosparam set /visual_yaw_pid/ki 0.1
-#    rosparam set /visual_yaw_pid/kd 1.0
-#    
-#    目标设定:
-#    rosparam set /target_altitude 0.8
-#    
-#    控制模式:
-#    rosparam set /control_mode 4
-
-# 3. 安全建议：
-#    - 在浅水区进行调试
-#    - 目标深度不要设置过深
-#    - 随时准备切换到手动模式
+# ============ 电机布局 ============
+# CH1: 右推进器（前进+Yaw控制）
+# CH2: 左推进器（前进+Yaw控制）  
+# CH3: 上推进器（深度控制）
+# CH4: 下推进器（深度控制）
+#
+# Dock跟踪模式控制逻辑：
+# - 前进：CH1和CH2同时增加推力
+# - Yaw调整：CH1和CH2差分控制
+# - 深度保持：CH3和CH4控制
