@@ -13,11 +13,11 @@
         <param name="framerate" value="30"/>
     </node>
     
-    <!-- 2. 人脸识别节点 -->
+    <!-- 2. 坞舱识别节点 -->
     <node name="cam_cv" pkg="yolo" type="cam_cv.py" output="screen">
     </node>
     
-    <!-- 3. 舵机人脸跟踪节点 -->
+    <!-- 3. 舵机坞舱跟踪节点 -->
     <node name="sbus_ctrl" pkg="auv_run" type="sbus_ctrl" output="screen">
         <!-- <param name="serial_port" value="/dev/ttyUSB0"/> -->
     </node>

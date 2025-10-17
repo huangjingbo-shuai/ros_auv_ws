@@ -26,8 +26,16 @@ enum class PIDDebugMode {
 // 控制模式枚举
 enum class ControlMode {
     DEPTH_ONLY = 1,           // 只控制深度
-    YAW_ONLY = 2,             // 只控制偏航角
-    DOCK_TRACKING = 3         // Dock跟踪模式（深度保持+前进+视觉Yaw）
+    YAW_ONLY = 2,             // 只控制偏航角（搜寻+调整）
+    DOCK_TRACKING = 3         // Dock跟踪模式（状态机控制）
+};
+
+// Dock跟踪状态枚举
+enum class DockTrackingState {
+    DEPTH_STABILIZING = 1,    // 定深阶段
+    SEARCHING = 2,            // 搜寻阶段
+    YAW_ADJUSTING = 3,        // Yaw调整阶段
+    FORWARD_TRACKING = 4      // 前进跟踪阶段
 };
 
 class PIDController {
@@ -347,8 +355,9 @@ private:
     // 视觉Yaw角控制PID
     PIDController* visual_yaw_pid;
     
-    // 控制模式
+    // 控制模式和状态
     ControlMode control_mode;
+    DockTrackingState dock_state;
     
     // 深度相关变量
     double current_altitude;
@@ -361,26 +370,36 @@ private:
     double current_pixel_y;        // 当前Dock中心像素Y坐标
     double target_pixel_x;         // 目标像素X坐标（相机中心）
     double target_pixel_y;         // 目标像素Y坐标（相机中心）
-    double pixel_error_x;          // 像素误差X
+    double pixel_error_x;          // 像素误差X (往右为正，往左为负)
     double pixel_error_y;          // 像素误差Y
     double dock_confidence;        // YOLO检测置信度
     bool dock_detected;           // Dock是否检测到
     ros::Time last_dock_time;     // 上次检测到Dock的时间
     double dock_timeout;          // Dock超时时间
     
+    // 状态机控制参数
+    ros::Time state_start_time;   // 当前状态开始时间
+    double depth_stable_time;     // 定深稳定所需时间
+    double search_time;           // 搜寻持续时间
+    double depth_tolerance;       // 深度稳定容忍度
+    double yaw_adjustment_tolerance; // Yaw调整容忍度
+    
+    // 搜寻控制参数
+    double search_turn_speed;     // 搜寻转圈速度
+    
     // 前进控制参数
-    double forward_thrust;         // Dock跟踪模式的前进推力
+    double forward_thrust;        // 前进推力
     
     // 相机参数
-    double camera_cx;              // 相机光心X坐标
-    double camera_cy;              // 相机光心Y坐标
-    double camera_fx;              // X方向焦距
-    double camera_fy;              // Y方向焦距
+    double camera_cx;             // 相机光心X坐标
+    double camera_cy;             // 相机光心Y坐标
+    double camera_fx;             // X方向焦距
+    double camera_fy;             // Y方向焦距
     
     // PWM控制变量
     uint16_t base_throttle;
-    uint16_t current_pwm_ch1, current_pwm_ch2;  // CH1右推进器, CH2左推进器 (Yaw控制+前进)
-    uint16_t current_pwm_ch3, current_pwm_ch4;  // CH3前推进器, CH4后推进器 (深度控制)
+    uint16_t current_pwm_ch1, current_pwm_ch2;  // CH1左推进器, CH2右推进器 (用于Yaw控制+前进)
+    uint16_t current_pwm_ch3, current_pwm_ch4;  // CH3上推进器, CH4下推进器 (用于深度控制)
     uint16_t target_pwm_ch1, target_pwm_ch2;
     uint16_t target_pwm_ch3, target_pwm_ch4;
     
@@ -431,7 +450,7 @@ private:
             csv_filename = generateTimestampedFilename();
             data_file.open(csv_filename);
             
-            data_file << "timestamp,control_mode,debug_mode,"
+            data_file << "timestamp,control_mode,dock_state,debug_mode,"
                       << "altitude,altitude_error,velocity_z,accel_z,"
                       << "pixel_x,pixel_y,pixel_error_x,pixel_error_y,dock_detected,dock_confidence,"
                       << "alt_pos_setpoint,alt_vel_setpoint,alt_acc_setpoint,"
@@ -449,7 +468,7 @@ private:
         }
     }
     
-    void logData(int control_mode, int debug_mode, 
+    void logData(int control_mode, int dock_state, int debug_mode, 
                 double altitude, double altitude_error, double velocity_z, double accel_z,
                 double pixel_x, double pixel_y, double pixel_error_x, double pixel_error_y, 
                 bool dock_detected, double dock_confidence,
@@ -467,7 +486,7 @@ private:
             
             data_file << std::fixed << std::setprecision(4) 
                      << elapsed << ","
-                     << control_mode << "," << debug_mode << ","
+                     << control_mode << "," << dock_state << "," << debug_mode << ","
                      << altitude << "," << altitude_error << "," << velocity_z << "," << accel_z << ","
                      << pixel_x << "," << pixel_y << "," << pixel_error_x << "," << pixel_error_y << "," 
                      << (dock_detected ? 1 : 0) << "," << dock_confidence << ","
@@ -504,12 +523,62 @@ private:
         }
     }
 
+    // 状态机辅助函数
+    double getStateElapsedTime() {
+        return (ros::Time::now() - state_start_time).toSec();
+    }
+    
+    void changeState(DockTrackingState new_state) {
+        dock_state = new_state;
+        state_start_time = ros::Time::now();
+        
+        // 重置相关PID控制器的积分项
+        switch (new_state) {
+            case DockTrackingState::DEPTH_STABILIZING:
+                // altitude_pid->resetIntegralOnly();
+                ROS_INFO("状态切换: 定深阶段");
+                break;
+            case DockTrackingState::SEARCHING:
+                // visual_yaw_pid->resetIntegralOnly();
+                ROS_INFO("状态切换: 搜寻阶段");
+                break;
+            case DockTrackingState::YAW_ADJUSTING:
+                // visual_yaw_pid->resetIntegralOnly();
+                ROS_INFO("状态切换: Yaw调整阶段");
+                break;
+            case DockTrackingState::FORWARD_TRACKING:
+                ROS_INFO("状态切换: 前进跟踪阶段");
+                break;
+        }
+    }
+    
+    bool isDepthStable() {
+        double altitude_error = std::abs(target_altitude - current_altitude);
+        return altitude_error <= depth_tolerance;
+    }
+    
+    bool isDockCentered() {
+        return dock_detected && std::abs(pixel_error_x) <= yaw_adjustment_tolerance;
+    }
+
+    // 添加Yaw死区跳过函数
+    double applyYawDeadzone(double yaw_output) {
+        if (yaw_output > 0) {
+            return yaw_output + pwm_deadzone;
+        } else if (yaw_output < 0) {
+            return yaw_output - pwm_deadzone;
+        }
+        return yaw_output;
+    }
+
 public:
     FlightControllerInterface() : 
         current_altitude(0.0), current_velocity_z(0.0), current_accel_z(0.0), target_altitude(0.6),
         current_pixel_x(0.0), current_pixel_y(0.0), target_pixel_x(318.509118), target_pixel_y(247.737583),
         pixel_error_x(0.0), pixel_error_y(0.0), dock_confidence(0.0), dock_detected(false), dock_timeout(2.0),
-        forward_thrust(100.0),  // 默认前进推力
+        dock_state(DockTrackingState::DEPTH_STABILIZING),
+        depth_stable_time(3.0), search_time(15.0), depth_tolerance(0.05), yaw_adjustment_tolerance(20.0),
+        search_turn_speed(60.0), forward_thrust(100.0),  
         camera_cx(318.509118), camera_cy(247.737583), camera_fx(410.971988), camera_fy(412.393625),
         base_throttle(1500), logging_enabled(true),
         current_pwm_ch1(1500), current_pwm_ch2(1500), current_pwm_ch3(1500), current_pwm_ch4(1500),
@@ -543,35 +612,38 @@ public:
 
         rate = new ros::Rate(100);
         
-        // 从ROS参数服务器读取PID参数，使用配置文件中的默认值
+        // 从ROS参数服务器读取PID参数
         double pos_kp, pos_ki, pos_kd;
         double vel_kp, vel_ki, vel_kd;
         double acc_kp, acc_ki, acc_kd;
         double visual_yaw_kp, visual_yaw_ki, visual_yaw_kd;
         
-        // 深度控制PID参数 - 使用配置文件值
-        nh.param("position_pid/kp", pos_kp, 20.0);
+        // 深度控制PID参数
+        nh.param("position_pid/kp", pos_kp, 15.0);
         nh.param("position_pid/ki", pos_ki, 0.0);
         nh.param("position_pid/kd", pos_kd, 0.0);
         
-        nh.param("velocity_pid/kp", vel_kp, 10.0);
+        nh.param("velocity_pid/kp", vel_kp, 15.0);
         nh.param("velocity_pid/ki", vel_ki, 0.0);
         nh.param("velocity_pid/kd", vel_kd, 0.0);
         
-        nh.param("acceleration_pid/kp", acc_kp, 0.8);
-        nh.param("acceleration_pid/ki", acc_ki, 0.03);
+        nh.param("acceleration_pid/kp", acc_kp, 2.0);
+        nh.param("acceleration_pid/ki", acc_ki, 0.1);
         nh.param("acceleration_pid/kd", acc_kd, 0.8);
         
         // 视觉Yaw控制PID参数
-        nh.param("visual_yaw_pid/kp", visual_yaw_kp, 2.0);
+        nh.param("visual_yaw_pid/kp", visual_yaw_kp, 0.004);
         nh.param("visual_yaw_pid/ki", visual_yaw_ki, 0.05);
         nh.param("visual_yaw_pid/kd", visual_yaw_kd, 0.8);
         
-        // 目标值 - 使用配置文件值
-        nh.param("target_altitude", target_altitude, 0.6);
-        
-        // 前进推力
-        nh.param("forward_thrust", forward_thrust, 100.0);
+        // 目标值和控制参数
+        nh.param("target_altitude", target_altitude, 0.4);
+        nh.param("forward_thrust", forward_thrust, 30.0);
+        nh.param("search_turn_speed", search_turn_speed, 60.0);
+        nh.param("depth_stable_time", depth_stable_time, 3.0);
+        nh.param("search_time", search_time, 15.0);
+        nh.param("depth_tolerance", depth_tolerance, 0.05);
+        nh.param("yaw_adjustment_tolerance", yaw_adjustment_tolerance, 20.0);
         
         // 控制模式
         int mode;
@@ -587,7 +659,7 @@ public:
         nh.param("altitude_deadzone", altitude_deadzone, 0.02);
         nh.param("visual_yaw_deadzone", visual_yaw_deadzone, 10.0);
         
-        // 调试输出设置 - 使用配置文件值
+        // 调试输出设置
         nh.param("verbose_debug", verbose_debug, true);
         
         // 相机参数
@@ -606,9 +678,11 @@ public:
         ROS_INFO("视觉Yaw控制PID: P=%.3f, I=%.3f, D=%.3f", visual_yaw_kp, visual_yaw_ki, visual_yaw_kd);
         ROS_INFO("目标深度: %.2f 米", target_altitude);
         ROS_INFO("前进推力: %.1f", forward_thrust);
+        ROS_INFO("搜寻转圈速度: %.1f", search_turn_speed);
         ROS_INFO("控制模式: %d (1=仅深度, 2=仅视觉Yaw, 3=Dock跟踪)", (int)control_mode);
-        ROS_INFO("详细调试输出: %s", verbose_debug ? "开启" : "关闭");
-        ROS_INFO("相机参数: 光心(%.1f, %.1f), 焦距(%.1f, %.1f)", camera_cx, camera_cy, camera_fx, camera_fy);
+        ROS_INFO("电机布局: CH1=左推进器, CH2=右推进器, CH3=上推进器, CH4=下推进器");
+        ROS_INFO("Yaw控制逻辑: 像素误差往右为正(+)需要右转, 往左为负(-)需要左转");
+        ROS_INFO("Yaw死区跳过: PWM>1500从1530开始, PWM<1500从1470开始");
         
         // 初始化PID控制器
         altitude_pid = new DebuggableCascadedPIDController(
@@ -639,6 +713,9 @@ public:
             altitude_pid->setManualSetpoints(manual_vel, manual_accel, true);
             ROS_INFO("手动设定点已启用 - 速度: %.3f m/s, 加速度: %.2f m/s²", manual_vel, manual_accel);
         }
+        
+        // 初始化状态机
+        state_start_time = ros::Time::now();
         
         initDataLogging();
     }
@@ -673,15 +750,15 @@ public:
         current_pixel_y = msg->y;
         dock_confidence = msg->z;  // YOLO检测置信度
         
-        // 计算像素误差
+        // 计算像素误差 (往右为正，往左为负)
         pixel_error_x = current_pixel_x - target_pixel_x;
         pixel_error_y = current_pixel_y - target_pixel_y;
         
         dock_detected = true;
         last_dock_time = ros::Time::now();
         
-        ROS_DEBUG("Dock检测到: 像素(%.1f, %.1f), 置信度: %.3f, 误差(%.1f, %.1f)", 
-                  current_pixel_x, current_pixel_y, dock_confidence, pixel_error_x, pixel_error_y);
+        ROS_DEBUG("Dock检测到: 像素(%.1f, %.1f), 置信度: %.3f, 误差X=%.1f(右+左-)", 
+                  current_pixel_x, current_pixel_y, dock_confidence, pixel_error_x);
     }
     
     bool armVehicle() {
@@ -705,10 +782,10 @@ public:
             msg.channels[i] = 65535;
         }
         
-        msg.channels[0] = throttle_ch1;  // CH1: 右推进器 (用于Yaw控制+前进)
-        msg.channels[1] = throttle_ch2;  // CH2: 左推进器 (用于Yaw控制+前进)
-        msg.channels[2] = throttle_ch3;  // CH3: 前推进器 (用于深度控制)
-        msg.channels[3] = throttle_ch4;  // CH4: 后推进器 (用于深度控制)
+        msg.channels[0] = throttle_ch1;  // CH1: 左推进器 (用于Yaw控制+前进)
+        msg.channels[1] = throttle_ch2;  // CH2: 右推进器 (用于Yaw控制+前进)
+        msg.channels[2] = throttle_ch3;  // CH3: 上推进器 (用于深度控制)
+        msg.channels[3] = throttle_ch4;  // CH4: 下推进器 (用于深度控制)
         
         rc_pub.publish(msg);
     }
@@ -716,6 +793,12 @@ public:
     // 设置控制模式
     void setControlMode(int mode) {
         control_mode = static_cast<ControlMode>(mode);
+        
+        // 重置状态机到初始状态
+        if (control_mode == ControlMode::DOCK_TRACKING) {
+            changeState(DockTrackingState::DEPTH_STABILIZING);
+        }
+        
         ROS_INFO("控制模式设置为: %d (1=仅深度, 2=仅视觉Yaw, 3=Dock跟踪)", mode);
     }
     
@@ -829,7 +912,7 @@ public:
         // 检查Dock超时
         if (dock_detected && (ros::Time::now() - last_dock_time).toSec() > dock_timeout) {
             dock_detected = false;
-            ROS_WARN("Dock检测超时，视觉控制暂停");
+            ROS_WARN("Dock检测超时");
         }
         
         altitude_pid->setMeasurements(current_altitude, current_velocity_z, current_accel_z);
@@ -851,74 +934,188 @@ public:
             pid_calculation_counter = 0;
         }
         
-        // 深度控制计算
-        if (should_calculate_pid && !in_altitude_deadzone && 
-            (control_mode == ControlMode::DEPTH_ONLY || control_mode == ControlMode::DOCK_TRACKING)) {
-            altitude_output = altitude_pid->compute();
-            last_altitude_output = altitude_output;
-            
-            if (altitude_output > 0) {
-                altitude_output += pwm_deadzone;
-            } else if (altitude_output < 0) {
-                altitude_output -= pwm_deadzone;
-            }
-        } else if (in_altitude_deadzone) {
-            if (!in_deadzone_last_time_altitude) {
-                // altitude_pid->resetIntegralOnly();
-            }
-        }
-        
-        // 视觉Yaw控制计算
-        if (should_calculate_pid && dock_detected && !in_visual_yaw_deadzone && 
-            (control_mode == ControlMode::YAW_ONLY || control_mode == ControlMode::DOCK_TRACKING)) {
-            // 使用像素误差X作为PID输入
-            visual_yaw_output = visual_yaw_pid->compute(pixel_error_x);
-            last_visual_yaw_output = visual_yaw_output;
-            
-            if (visual_yaw_output > 0) {
-                visual_yaw_output += pwm_deadzone;
-            } else if (visual_yaw_output < 0) {
-                visual_yaw_output -= pwm_deadzone;
-            }
-        } else if (in_visual_yaw_deadzone || !dock_detected) {
-            if (!in_deadzone_last_time_visual_yaw) {
-                // visual_yaw_pid->resetIntegralOnly();
-            }
-            if (!dock_detected) {
-                visual_yaw_output = 0; // 没有检测到目标时停止yaw控制
-            }
-        }
-        
-        in_deadzone_last_time_altitude = in_altitude_deadzone;
-        in_deadzone_last_time_visual_yaw = in_visual_yaw_deadzone;
-        
-        // 根据控制模式分配PWM值
-        // CH1: 右推进器, CH2: 左推进器 (视觉Yaw控制+前进)
-        // CH3: 前推进器, CH4: 后推进器 (深度控制)
+        // 根据控制模式执行不同的控制逻辑
         switch (control_mode) {
             case ControlMode::DEPTH_ONLY:
                 // 只控制深度
-                target_pwm_ch1 = base_throttle;
-                target_pwm_ch2 = base_throttle;
-                target_pwm_ch3 = base_throttle + altitude_output;
-                target_pwm_ch4 = base_throttle + altitude_output;
+                if (should_calculate_pid && !in_altitude_deadzone) {
+                    altitude_output = altitude_pid->compute();
+                    last_altitude_output = altitude_output;
+                    
+                    if (altitude_output > 0) {
+                        altitude_output += pwm_deadzone;
+                    } else if (altitude_output < 0) {
+                        altitude_output -= pwm_deadzone;
+                    }
+                }
+                
+                target_pwm_ch1 = base_throttle;                    // 左推进器
+                target_pwm_ch2 = base_throttle;                    // 右推进器
+                target_pwm_ch3 = base_throttle + altitude_output;  // 上推进器
+                target_pwm_ch4 = base_throttle + altitude_output;  // 下推进器
                 break;
                 
             case ControlMode::YAW_ONLY:
-                // 只控制视觉Yaw
-                target_pwm_ch1 = base_throttle + visual_yaw_output;   // 右推进器
-                target_pwm_ch2 = base_throttle - visual_yaw_output;   // 左推进器
-                target_pwm_ch3 = base_throttle;
-                target_pwm_ch4 = base_throttle;
+                // 只控制视觉Yaw：没有dock时搜寻，有dock时调整
+                if (dock_detected) {
+                    // 检测到dock，执行Yaw调整
+                    if (should_calculate_pid && !in_visual_yaw_deadzone) {
+                        visual_yaw_output = visual_yaw_pid->compute(pixel_error_x);
+                        last_visual_yaw_output = visual_yaw_output;
+                        
+                        // 应用Yaw死区跳过
+                        visual_yaw_output = applyYawDeadzone(visual_yaw_output);
+                    }
+                } else {
+                    // 没有检测到dock，执行搜寻转圈（向右转）
+                    visual_yaw_output = search_turn_speed;
+                    last_visual_yaw_output = visual_yaw_output;
+                    
+                    // 应用Yaw死区跳过
+                    visual_yaw_output = applyYawDeadzone(visual_yaw_output);
+                }
+                
+                // Yaw控制逻辑：pixel_error_x > 0(目标在右)需要右转，pixel_error_x < 0(目标在左)需要左转
+                // 右转：左推进器增加推力，右推进器减少推力
+                // visual_yaw_output > 0 表示需要右转或搜寻右转
+                target_pwm_ch1 = base_throttle + visual_yaw_output;   // 左推进器
+                target_pwm_ch2 = base_throttle - visual_yaw_output;   // 右推进器
+                target_pwm_ch3 = base_throttle;                       // 上推进器
+                target_pwm_ch4 = base_throttle;                       // 下推进器
                 break;
                 
             case ControlMode::DOCK_TRACKING:
             default:
-                // Dock跟踪模式：深度保持+前进+视觉Yaw跟踪
-                target_pwm_ch1 = base_throttle + forward_thrust + visual_yaw_output;   // 右推进器: 前进+yaw
-                target_pwm_ch2 = base_throttle + forward_thrust - visual_yaw_output;   // 左推进器: 前进+yaw
-                target_pwm_ch3 = base_throttle + altitude_output;    // 垂直推进器: 深度控制
-                target_pwm_ch4 = base_throttle + altitude_output;    // 垂直推进器: 深度控制
+                // Dock跟踪模式：使用状态机
+                // 状态转换逻辑
+                switch (dock_state) {
+                    case DockTrackingState::DEPTH_STABILIZING:
+                        // 定深阶段：只执行深度控制
+                        if (should_calculate_pid && !in_altitude_deadzone) {
+                            altitude_output = altitude_pid->compute();
+                            last_altitude_output = altitude_output;
+                            
+                            if (altitude_output > 0) {
+                                altitude_output += pwm_deadzone;
+                            } else if (altitude_output < 0) {
+                                altitude_output -= pwm_deadzone;
+                            }
+                        }
+                        
+                        target_pwm_ch1 = base_throttle;                    // 左推进器
+                        target_pwm_ch2 = base_throttle;                    // 右推进器
+                        target_pwm_ch3 = base_throttle + altitude_output;  // 上推进器
+                        target_pwm_ch4 = base_throttle + altitude_output;  // 下推进器
+                        
+                        // 检查是否达到稳定深度
+                        if (isDepthStable()) {
+                            changeState(DockTrackingState::SEARCHING);
+                        }
+                        break;
+                        
+                    case DockTrackingState::SEARCHING:
+                        // 搜寻阶段：保持深度+转圈搜寻
+                        if (should_calculate_pid && !in_altitude_deadzone) {
+                            altitude_output = altitude_pid->compute();
+                            last_altitude_output = altitude_output;
+                            
+                            if (altitude_output > 0) {
+                                altitude_output += pwm_deadzone;
+                            } else if (altitude_output < 0) {
+                                altitude_output -= pwm_deadzone;
+                            }
+                        }
+                        
+                        visual_yaw_output = search_turn_speed;  // 向右转搜寻
+                        last_visual_yaw_output = visual_yaw_output;
+                        
+                        // 应用Yaw死区跳过
+                        visual_yaw_output = applyYawDeadzone(visual_yaw_output);
+                        
+                        target_pwm_ch1 = base_throttle + visual_yaw_output;   // 左推进器（右转）
+                        target_pwm_ch2 = base_throttle - visual_yaw_output;   // 右推进器（右转）
+                        target_pwm_ch3 = base_throttle + altitude_output;     // 上推进器
+                        target_pwm_ch4 = base_throttle + altitude_output;     // 下推进器
+                        
+                        // 检查是否检测到dock
+                        if (dock_detected) {
+                            changeState(DockTrackingState::YAW_ADJUSTING);
+                        } else if (getStateElapsedTime() >= search_time) {
+                            // 搜寻超时，重新开始搜寻
+                            changeState(DockTrackingState::SEARCHING);
+                        }
+                        break;
+                        
+                    case DockTrackingState::YAW_ADJUSTING:
+                        // Yaw调整阶段：保持深度+调整Yaw使dock居中
+                        if (should_calculate_pid && !in_altitude_deadzone) {
+                            altitude_output = altitude_pid->compute();
+                            last_altitude_output = altitude_output;
+                            
+                            if (altitude_output > 0) {
+                                altitude_output += pwm_deadzone;
+                            } else if (altitude_output < 0) {
+                                altitude_output -= pwm_deadzone;
+                            }
+                        }
+                        
+                        if (dock_detected) {
+                            if (should_calculate_pid && !in_visual_yaw_deadzone) {
+                                visual_yaw_output = visual_yaw_pid->compute(pixel_error_x);
+                                last_visual_yaw_output = visual_yaw_output;
+                                
+                                // 应用Yaw死区跳过
+                                visual_yaw_output = applyYawDeadzone(visual_yaw_output);
+                            }
+                            
+                            // 检查dock是否居中
+                            if (isDockCentered()) {
+                                changeState(DockTrackingState::FORWARD_TRACKING);
+                            }
+                        } else {
+                            // dock丢失，回到搜寻状态
+                            // changeState(DockTrackingState::SEARCHING);
+                        }
+                        
+                        target_pwm_ch1 = base_throttle + visual_yaw_output;   // 左推进器
+                        target_pwm_ch2 = base_throttle - visual_yaw_output;   // 右推进器
+                        target_pwm_ch3 = base_throttle + altitude_output;     // 上推进器
+                        target_pwm_ch4 = base_throttle + altitude_output;     // 下推进器
+                        break;
+                        
+                    case DockTrackingState::FORWARD_TRACKING:
+                        // 前进跟踪阶段：保持深度+前进+持续调整Yaw
+                        if (should_calculate_pid && !in_altitude_deadzone) {
+                            altitude_output = altitude_pid->compute();
+                            last_altitude_output = altitude_output;
+                            
+                            if (altitude_output > 0) {
+                                altitude_output += pwm_deadzone;
+                            } else if (altitude_output < 0) {
+                                altitude_output -= pwm_deadzone;
+                            }
+                        }
+                        
+                        if (dock_detected) {
+                            if (should_calculate_pid && !in_visual_yaw_deadzone) {
+                                visual_yaw_output = visual_yaw_pid->compute(pixel_error_x);
+                                last_visual_yaw_output = visual_yaw_output;
+                                
+                                // 应用Yaw死区跳过
+                                visual_yaw_output = applyYawDeadzone(visual_yaw_output);
+                            }
+                        } else {
+                            // dock丢失，回到搜寻状态
+                            changeState(DockTrackingState::SEARCHING);
+                        }
+                        
+                        // 前进+Yaw调整：两个推进器都加上前进推力，再加上差分的Yaw控制
+                        target_pwm_ch1 = base_throttle + forward_thrust + visual_yaw_output;  // 左推进器: 前进+yaw
+                        target_pwm_ch2 = base_throttle + forward_thrust - visual_yaw_output;  // 右推进器: 前进+yaw
+                        target_pwm_ch3 = base_throttle + altitude_output;                     // 上推进器: 深度控制
+                        target_pwm_ch4 = base_throttle + altitude_output;                     // 下推进器: 深度控制
+                        break;
+                }
                 break;
         }
         
@@ -966,7 +1163,7 @@ public:
         smoothPWMTransition();
         
         // 记录调试数据
-        logData((int)control_mode, (int)debug_mode, 
+        logData((int)control_mode, (int)dock_state, (int)debug_mode, 
                 current_altitude, altitude_error, current_velocity_z, current_accel_z,
                 current_pixel_x, current_pixel_y, pixel_error_x, pixel_error_y, 
                 dock_detected, dock_confidence,
@@ -988,7 +1185,7 @@ public:
             debug_print_counter = 0;
             
             printf("\033[2J\033[H"); // 清屏
-            printf("\033[1;36m=== ROV Dock跟踪 PID调试信息 ===\033[0m\n");
+            printf("\033[1;36m=== ROV Dock跟踪 PID控制系统 ===\033[0m\n");
             
             printf("\033[1;33m控制模式: %d ", (int)control_mode);
             switch(control_mode) {
@@ -996,11 +1193,30 @@ public:
                     printf("(仅深度控制)\033[0m\n");
                     break;
                 case ControlMode::YAW_ONLY:
-                    printf("(仅视觉Yaw控制)\033[0m\n");
+                    printf("(仅视觉Yaw控制: %s)\033[0m\n", dock_detected ? "调整Yaw" : "搜寻中");
                     break;
                 case ControlMode::DOCK_TRACKING:
-                    printf("(Dock跟踪模式: 深度+前进+Yaw)\033[0m\n");
+                    printf("(Dock跟踪模式: ");
+                    switch(dock_state) {
+                        case DockTrackingState::DEPTH_STABILIZING:
+                            printf("定深阶段");
+                            break;
+                        case DockTrackingState::SEARCHING:
+                            printf("搜寻阶段");
+                            break;
+                        case DockTrackingState::YAW_ADJUSTING:
+                            printf("Yaw调整阶段");
+                            break;
+                        case DockTrackingState::FORWARD_TRACKING:
+                            printf("前进跟踪阶段");
+                            break;
+                    }
+                    printf(")\033[0m\n");
                     break;
+            }
+            
+            if (control_mode == ControlMode::DOCK_TRACKING) {
+                printf("\033[1;33m状态持续时间: %.1f秒\033[0m\n", getStateElapsedTime());
             }
             
             printf("\033[1;33m深度调试模式: %d ", (int)debug_mode);
@@ -1027,7 +1243,7 @@ public:
                 printf("  YOLO检测: \033[1;32mDock已检测到\033[0m\n");
                 printf("  像素坐标: (%.1f, %.1f), 目标: (%.1f, %.1f)\n",
                        current_pixel_x, current_pixel_y, target_pixel_x, target_pixel_y);
-                printf("  像素误差: X=%.1f, Y=%.1f\n", pixel_error_x, pixel_error_y);
+                printf("  像素误差X: %.1f (右+左-), Y: %.1f\n", pixel_error_x, pixel_error_y);
                 printf("  检测置信度: %.3f\n", dock_confidence);
                 
                 // 计算角度误差用于显示
@@ -1040,22 +1256,16 @@ public:
             
             printf("\033[1;34m控制输出:\033[0m\n");
             printf("  前进推力: %.1f\n", forward_thrust);
+            printf("  搜寻转圈速度: %.1f (右转)\n", search_turn_speed);
             printf("  深度控制输出: %.2f\n", last_altitude_output);
-            printf("  视觉Yaw输出: %.2f\n", last_visual_yaw_output);
+            printf("  视觉Yaw输出: %.2f (正值=右转，负值=左转)\n", last_visual_yaw_output);
             
-            printf("\033[1;34m设定点:\033[0m\n");
-            printf("  深度 - 位置: %.3fm, 速度: %.4fm/s, 加速度: %.3fm/s²\n", 
-                   alt_pos_setpoint, alt_vel_setpoint, alt_acc_setpoint);
-            printf("  视觉Yaw设定点: %.1f (像素误差为0)\n", 0.0);
-            
-            printf("\033[1;35mPWM控制状态:\033[0m\n");
-            printf("  目标PWM - 右(CH1):%d, 左(CH2):%d, 前(CH3):%d, 后(CH4):%d\n", 
-                   target_pwm_ch1, target_pwm_ch2, target_pwm_ch3, target_pwm_ch4);
-            printf("  当前PWM - 右(CH1):%d, 左(CH2):%d, 前(CH3):%d, 后(CH4):%d\n", 
-                   current_pwm_ch1, current_pwm_ch2, current_pwm_ch3, current_pwm_ch4);
-            printf("  PID计算: %s | 计数器: %d/%d\n", 
-                   (should_calculate_pid ? "是" : "否"),
-                   pid_calculation_counter, pid_calculation_interval);
+            printf("\033[1;34m电机布局和PWM:\033[0m\n");
+            printf("  CH1左推进器: %d, CH2右推进器: %d\n", current_pwm_ch1, current_pwm_ch2);
+            printf("  CH3上推进器: %d, CH4下推进器: %d\n", current_pwm_ch3, current_pwm_ch4);
+            printf("  Yaw控制逻辑: 像素误差右+ %.1f → %s\n", 
+                   pixel_error_x, pixel_error_x > 0 ? "需要右转(左推进器+)" : (pixel_error_x < 0 ? "需要左转(右推进器+)" : "居中"));
+            printf("  Yaw死区跳过: PWM>1500从1530开始, PWM<1500从1470开始\n");
             
             if (verbose_debug) {
                 printf("\033[1;35m深度PID分量:\033[0m\n");
@@ -1102,25 +1312,20 @@ public:
         }
         
         ROS_INFO("=== ROV Dock跟踪演示开始 ===");
-        ROS_INFO("固定每%d个周期更新一次PID", pid_calculation_interval);
-        ROS_INFO("默认开启Dock跟踪模式(深度保持+前进+视觉Yaw跟踪)");
-        ROS_INFO("订阅话题: /yolo_pixel 获取YOLO Dock像素坐标");
-        ROS_INFO("你可以通过以下命令实时调整参数:");
-        ROS_INFO("深度控制:");
-        ROS_INFO("  rosparam set /position_pid/kp 20.0");
-        ROS_INFO("  rosparam set /velocity_pid/kp 10.0");
-        ROS_INFO("  rosparam set /acceleration_pid/kp 0.8");
-        ROS_INFO("视觉Yaw控制:");
-        ROS_INFO("  rosparam set /visual_yaw_pid/kp 2.0");
-        ROS_INFO("  rosparam set /visual_yaw_pid/ki 0.05");
-        ROS_INFO("  rosparam set /visual_yaw_pid/kd 0.8");
-        ROS_INFO("前进控制:");
-        ROS_INFO("  rosparam set /forward_thrust 120.0");
-        ROS_INFO("目标设定:");
-        ROS_INFO("  rosparam set /target_altitude 0.8");
+        ROS_INFO("电机布局: CH1=左推进器, CH2=右推进器, CH3=上推进器, CH4=下推进器");
+        ROS_INFO("控制逻辑: 像素误差往右为正(需要右转), 往左为负(需要左转)");
+        ROS_INFO("Yaw控制: 右转=左推进器增加+右推进器减少, 左转=右推进器增加+左推进器减少");
+        ROS_INFO("Yaw死区跳过: PWM>1500从1530开始, PWM<1500从1470开始");
         ROS_INFO("控制模式:");
-        ROS_INFO("  rosparam set /control_mode 3  # 1=仅深度, 2=仅视觉Yaw, 3=Dock跟踪");
-        ROS_INFO("  rosparam set /debug_mode 1    # 1=加速度环, 2=速度+加速度, 3=全三环");
+        ROS_INFO("  1 = 仅深度控制");
+        ROS_INFO("  2 = 仅视觉Yaw控制 (无dock时向右搜寻，有dock时调整)");
+        ROS_INFO("  3 = Dock跟踪模式 (定深→搜寻→Yaw调整→前进跟踪)");
+        ROS_INFO("实时调整参数命令:");
+        ROS_INFO("  rosparam set /control_mode 3");
+        ROS_INFO("  rosparam set /target_altitude 0.6");
+        ROS_INFO("  rosparam set /forward_thrust 50.0");
+        ROS_INFO("  rosparam set /search_turn_speed 80.0");
+        ROS_INFO("  rosparam set /visual_yaw_pid/kp 0.006");
         
         // 从ROS参数获取控制模式
         int ctrl_mode = 3;

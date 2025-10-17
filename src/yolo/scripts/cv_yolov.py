@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import rospy
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, CompressedImage
 from geometry_msgs.msg import Point
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
@@ -41,9 +41,9 @@ class YoloPixelDetector:
             rospy.logerr(f"YOLO模型加载失败: {e}")
             raise
 
-        # **订阅相机原始图像**
-        self.image_sub = rospy.Subscriber("/camera/image_raw", Image, self.image_callback, queue_size=1, buff_size=2**24)
-        rospy.loginfo("订阅 /camera/image_raw 话题")
+        # **订阅相机压缩图像 - 修改为CompressedImage类型**
+        self.image_sub = rospy.Subscriber("/camera/image_raw/compressed", CompressedImage, self.image_callback, queue_size=1, buff_size=2**24)
+        rospy.loginfo("订阅 /camera/image_raw/compressed 话题")
 
         # **相机标定参数**
         self.camera_width = 640
@@ -64,9 +64,13 @@ class YoloPixelDetector:
     def image_callback(self, data):
         """使用YOLO检测目标，发布像素坐标"""
         try:
-            cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+            # **修改：使用compressed_imgmsg_to_cv2处理压缩图像**
+            cv_image = self.bridge.compressed_imgmsg_to_cv2(data, "bgr8")
         except CvBridgeError as e:
             rospy.logerr("CvBridge Error: {0}".format(e))
+            return
+        except Exception as e:
+            rospy.logerr("图像解压缩错误: {0}".format(e))
             return
 
         # **YOLO 推理**

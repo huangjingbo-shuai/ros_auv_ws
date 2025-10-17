@@ -4,8 +4,8 @@
 # ============ 控制模式设置 ============
 # 控制模式：
 # 1 = 仅深度控制
-# 2 = 仅视觉Yaw控制  
-# 3 = Dock跟踪模式（深度保持+前进+视觉Yaw跟踪）
+# 2 = 仅视觉Yaw控制 (无dock时搜寻，有dock时调整)
+# 3 = Dock跟踪模式（定深→搜寻→Yaw调整→前进跟踪）
 control_mode: 3
 
 # 深度控制调试模式：
@@ -16,10 +16,26 @@ debug_mode: 3
 
 # ============ 目标设定 ============
 # 目标深度（米）
-target_altitude: 0.6
+target_altitude: 0.5
 
-# 前进推力（用于Dock跟踪模式）
+# 前进推力（用于Dock跟踪模式的前进阶段）
 forward_thrust: 30.0
+
+# 搜寻转圈速度（用于搜寻dock）
+search_turn_speed: -40.0
+
+# ============ 状态机参数 ============
+# 定深稳定所需时间（秒）
+depth_stable_time: 3.0
+
+# 搜寻持续时间（秒，超时后重新开始搜寻）
+search_time: 15.0
+
+# 深度稳定容忍度（米）
+depth_tolerance: 0.1
+
+# Yaw调整容忍度（像素，dock居中的判断标准）
+yaw_adjustment_tolerance: 20.0
 
 # ============ 深度控制PID参数 ============
 # 位置环PID参数（深度外环）
@@ -36,16 +52,18 @@ velocity_pid:
 
 # 加速度环PID参数（深度内环）
 acceleration_pid:
-  kp: 2
+  kp: 2.0
   ki: 0.1
   kd: 0.8
 
 # ============ 视觉Yaw控制PID参数 ============
 # 基于像素误差的Yaw控制
 visual_yaw_pid:
-  kp: 0.004
+  kp: 0.015
+  # ki: 0.05
+  # kd: 0.8
   ki: 0.05
-  kd: 0.8
+  kd: 0.08
 
 # ============ 手动设定点（用于PID调试）============
 manual_setpoints:
@@ -75,27 +93,44 @@ pid_calculation_interval: 5
 verbose_debug: true
 
 # ============ 实时调整命令参考 ============
+# 控制模式:
+#   rosparam set /control_mode 2    # 切换到仅视觉Yaw控制
+#   rosparam set /control_mode 3    # 切换到Dock跟踪模式
+# 
 # 深度控制:
-#   rosparam set /position_pid/kp 25.0
+#   rosparam set /position_pid/kp 20.0
 #   rosparam set /acceleration_pid/ki 0.05
 # 
 # 视觉控制:
-#   rosparam set /visual_yaw_pid/kp 2.5
+#   rosparam set /visual_yaw_pid/kp 0.006
+#   rosparam set /search_turn_speed 80.0
 #
-# 前进推力:
-#   rosparam set /forward_thrust 120.0
+# 运动控制:
+#   rosparam set /forward_thrust 50.0
+#   rosparam set /target_altitude 0.6
 #
-# 模式切换:
-#   rosparam set /control_mode 1    # 仅深度控制
+# 状态机参数:
+#   rosparam set /depth_stable_time 5.0
+#   rosparam set /search_time 20.0
+#   rosparam set /yaw_adjustment_tolerance 15.0
+#
+# 调试模式:
 #   rosparam set /debug_mode 1      # 仅调试加速度环
 
-# ============ 电机布局 ============
-# CH1: 右推进器（前进+Yaw控制）
-# CH2: 左推进器（前进+Yaw控制）  
-# CH3: 上推进器（深度控制）
-# CH4: 下推进器（深度控制）
+# ============ 控制逻辑说明 ============
+# 
+# 仅视觉Yaw控制模式 (control_mode: 2):
+#   - 无dock检测: 原地转圈搜寻 (search_turn_speed)
+#   - 检测到dock: 调整Yaw角使dock居中
 #
-# Dock跟踪模式控制逻辑：
-# - 前进：CH1和CH2同时增加推力
-# - Yaw调整：CH1和CH2差分控制
-# - 深度保持：CH3和CH4控制
+# Dock跟踪模式状态机 (control_mode: 3):
+#   1. 定深阶段: 只执行深度控制，稳定到目标深度
+#   2. 搜寻阶段: 保持深度 + 原地转圈搜寻dock
+#   3. Yaw调整阶段: 保持深度 + 调整Yaw使dock居中
+#   4. 前进跟踪阶段: 保持深度 + 前进 + 持续Yaw跟踪
+#
+# 电机布局:
+#   CH1: 右推进器（前进+Yaw控制）
+#   CH2: 左推进器（前进+Yaw控制）  
+#   CH3: 上推进器（深度控制）
+#   CH4: 下推进器（深度控制）
